@@ -3,21 +3,22 @@ langchain
 langchain-community
 langchain-core
 
-# --- Vector Database (ChromaDB) ---
+# --- Vector Database ---
 langchain-chroma
 chromadb
 
-# --- Models (LLM & Embeddings) ---
-# For connecting to Ollama (Llama 3, Mistral, etc.)
+# --- Models ---
 langchain-ollama
-# For running local Embeddings (HuggingFace)
 langchain-huggingface
 sentence-transformers
 
-# --- Document Parsing (The Heavy Lifter) ---
-# IBM Docling for advanced PDF/Image parsing & Markdown conversion
+# --- Document Processing ---
 docling
+pandas
+openpyxl
 
-# --- Fallback / Utilities ---
-# Good to have if you want to switch back to simple loaders later
-pypdf
+# --- Web Server (FastAPI) ---
+fastapi
+uvicorn
+python-multipart
+pydantic
