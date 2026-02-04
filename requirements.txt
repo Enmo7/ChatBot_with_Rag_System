@@ -1,0 +1,23 @@
+# --- Core Framework ---
+langchain
+langchain-community
+langchain-core
+
+# --- Vector Database (ChromaDB) ---
+langchain-chroma
+chromadb
+
+# --- Models (LLM & Embeddings) ---
+# For connecting to Ollama (Llama 3, Mistral, etc.)
+langchain-ollama
+# For running local Embeddings (HuggingFace)
+langchain-huggingface
+sentence-transformers
+
+# --- Document Parsing (The Heavy Lifter) ---
+# IBM Docling for advanced PDF/Image parsing & Markdown conversion
+docling
+
+# --- Fallback / Utilities ---
+# Good to have if you want to switch back to simple loaders later
+pypdf
