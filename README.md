@@ -59,7 +59,7 @@ Before running the code, ensure you have the following installed:
 
 1.  **Clone/Download the project:**
     ```bash
-    git clone <your-repo-url>
+    git clone https://github.com/Enmo7/ChatBot_with_Rag_System.git
     cd my_local_rag
     ```
 
