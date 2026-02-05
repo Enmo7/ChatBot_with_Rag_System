@@ -20,24 +20,25 @@ The system follows a streamlined pipeline for ingestion and retrieval:
 ```mermaid
 graph TD
     %% Ingestion Pipeline
-    User[👤 User] -->|1. Uploads Documents| API[⚡ FastAPI Server]
-    API -->|2. Stream Processing| Loader[📄 Document Loader]
+    User[User Upload] -->|1. Documents| API[FastAPI Server]
+    API -->|2. Stream| Loader[Document Loader]
     
-    subgraph Parsing Engine
-        Loader -->|Digital PDF| PyMuPDF[🚀 PyMuPDF]
-        Loader -->|Scanned/Image| OCR[👁️ RapidOCR]
+    subgraph Parsing[Parsing Engine]
+        Loader -->|Digital PDF| PyMuPDF[PyMuPDF Fast Parser]
+        Loader -->|Scanned| OCR[RapidOCR Engine]
     end
     
-    PyMuPDF & OCR -->|Raw Text| Splitter[✂️ Recursive Splitter]
-    Splitter -->|Chunks| Embed[🧠 Embeddings<br/>(all-mpnet-base-v2)]
-    Embed -->|Vectors (Batch)| DB[(🗄️ ChromaDB)]
+    PyMuPDF -->|Raw Text| Splitter[Text Splitter]
+    OCR -->|Raw Text| Splitter
+    Splitter -->|Chunks| Embed[Embeddings Model]
+    Embed -->|Vectors| DB[(ChromaDB)]
 
     %% Retrieval Pipeline
-    User -->|3. Asks Question| API
-    API -->|4. Query| Chain[🔗 QA Chain]
-    Chain -->|5. MMR Search (k=7)| DB
-    DB -->|6. Context| LLM[🤖 Llama 3.2]
-    LLM -->|7. Strict English Answer| User
+    User -->|3. Question| API
+    API -->|4. Query| Chain[QA Chain]
+    Chain -->|5. Search| DB
+    DB -->|6. Context| LLM[Llama 3.2]
+    LLM -->|7. Answer| User
 ```
 
 ---
@@ -598,12 +599,6 @@ pytest tests/
 flake8 .
 black .
 ```
-
----
-
-## License
-
-MIT License - Free to use, modify, and distribute.
 
 ---
 
