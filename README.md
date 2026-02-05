@@ -430,30 +430,6 @@ retriever = self.vectorstore.as_retriever(
         "k": 10
     }
 )
-```
-
-### Prompt Engineering
-
-Edit `rag_engine.py` to customize the system prompt:
-
-```python
-prompt_template = """
-You are a precise AI assistant specialized in English documentation.
-
-STRICT RULES:
-1. Answer ONLY in English
-2. Base your answer ONLY on the provided context
-3. If the context doesn't contain the answer, say "I don't have enough information"
-4. Cite specific sources when possible
-
-Context:
-{context}
-
-Question: {question}
-
-Answer:
-"""
-```
 
 ---
 
@@ -581,12 +557,6 @@ Contributions welcome! Focus areas:
 3. UI/UX improvements
 4. Test coverage
 5. Documentation
-
----
-
-## License
-
-MIT License - Free to use and modify
 
 ---
 
