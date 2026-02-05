@@ -1,26 +1,34 @@
-import os
+import torch
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 
 class ModelManager:
     """
-    Handles the initialization of the LLM and Embedding models.
+    Configuration for English-Only High-Performance RAG.
     """
     
     @staticmethod
     def get_embeddings():
         """
-        Initializes the local embedding model using HuggingFace.
-        Using 'all-MiniLM-L6-v2' as it is lightweight and efficient for local CPU.
+        Initializes the Best English Embedding Model.
+        'all-mpnet-base-v2' maps sentences to a 768 dimensional vector space 
+        and offers the best quality for English retrieval tasks.
         """
-        print("Initializing Embedding Model...")
-        return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        print("Initializing High-Performance English Embedding Model (all-mpnet-base-v2)...")
+        
+        # Check for GPU
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"🔌 Embeddings running on: {device.upper()}")
+
+        return HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-mpnet-base-v2",
+            model_kwargs={'device': device}
+        )
 
     @staticmethod
     def get_llm(model_name="llama3.2"):
         """
         Initializes the Ollama LLM.
-        Ensure 'ollama serve' is running in the background.
         """
         print(f"Initializing LLM ({model_name})...")
-        return ChatOllama(model=model_name)
+        return ChatOllama(model=model_name, temperature=0.1)

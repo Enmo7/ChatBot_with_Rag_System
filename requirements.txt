@@ -12,12 +12,13 @@ langchain-ollama
 langchain-huggingface
 sentence-transformers
 
-# --- Document Processing ---
-docling
+# --- Document Processing (High Performance) ---
+pymupdf
+rapidocr-onnxruntime
 pandas
 openpyxl
 
-# --- Web Server (FastAPI) ---
+# --- Web Server ---
 fastapi
 uvicorn
 python-multipart

@@ -1,56 +1,86 @@
 import os
 from langchain_chroma import Chroma
-from langchain_classic.chains import RetrievalQA
+from langchain_core.prompts import PromptTemplate
 from model_manager import ModelManager
 
+try:
+    from langchain_classic.chains import RetrievalQA
+except ImportError:
+    from langchain_community.chains import RetrievalQA
+
 class RAGEngine:
-    """
-    Manages the Vector Database (Chroma) and the Retrieval QA Chain.
-    """
-    
     def __init__(self, db_path="./db"):
         self.db_path = db_path
         self.embeddings = ModelManager.get_embeddings()
         self.llm = ModelManager.get_llm()
         self.vector_db = None
 
-    def initialize_db(self, chunks=None):
-        """
-        Initializes the Vector Database.
-        If chunks are provided, it creates a new DB.
-        If not, it attempts to load an existing DB.
-        """
-        if chunks:
-            print("Creating new Vector Database...")
-            self.vector_db = Chroma.from_documents(
-                documents=chunks,
-                embedding=self.embeddings,
-                persist_directory=self.db_path
+    def initialize_db(self, chunks_generator=None, batch_size=200):
+        print(f"⚙️ Initializing DB Manager (Batch Size: {batch_size})...")
+        
+        if os.path.exists(self.db_path) and os.listdir(self.db_path):
+             self.vector_db = Chroma(
+                persist_directory=self.db_path,
+                embedding_function=self.embeddings
             )
         else:
-            if os.path.exists(self.db_path):
-                print("Loading existing Vector Database...")
-                self.vector_db = Chroma(
-                    persist_directory=self.db_path,
-                    embedding_function=self.embeddings
-                )
-            else:
-                raise ValueError("No existing DB found and no chunks provided.")
+            self.vector_db = Chroma(
+                embedding_function=self.embeddings,
+                persist_directory=self.db_path
+            )
+
+        if chunks_generator:
+            batch = []
+            count = 0
+            for chunk in chunks_generator:
+                batch.append(chunk)
+                if len(batch) >= batch_size:
+                    print(f"💾 Saving batch of {len(batch)} chunks... (Total: {count})")
+                    self.vector_db.add_documents(batch)
+                    batch = []
+                    count += batch_size
+            
+            if batch:
+                print(f"💾 Saving final batch of {len(batch)} chunks...")
+                self.vector_db.add_documents(batch)
+            print("✅ Ingestion Complete!")
 
     def get_qa_chain(self):
-        """
-        Creates and returns the RetrievalQA chain.
-        """
         if not self.vector_db:
             raise ValueError("Vector DB is not initialized.")
 
-        retriever = self.vector_db.as_retriever(search_kwargs={"k": 3})
+        retriever = self.vector_db.as_retriever(
+            search_type="mmr",
+            search_kwargs={"k": 7, "fetch_k": 20}
+        )
+        
+        prompt_template = """
+        You are a professional AI assistant designed to answer questions based ONLY on the provided context.
+        
+        Guidelines:
+        1. Answer ONLY in English. Do not use any other language.
+        2. If the answer is not in the context, strictly say: "I cannot find the answer in the provided documents."
+        3. Do not make up information.
+        4. Be concise and professional.
+
+        Context:
+        {context}
+
+        Question: {question}
+        
+        Answer:
+        """
+        
+        PROMPT = PromptTemplate(
+            template=prompt_template, input_variables=["context", "question"]
+        )
         
         qa_chain = RetrievalQA.from_chain_type(
             llm=self.llm,
-            chain_type="stuff", # "stuff" puts all chunks into prompt
+            chain_type="stuff",
             retriever=retriever,
-            return_source_documents=True
+            return_source_documents=True,
+            chain_type_kwargs={"prompt": PROMPT}
         )
         
         return qa_chain
