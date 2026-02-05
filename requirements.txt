@@ -17,9 +17,14 @@ pymupdf
 rapidocr-onnxruntime
 pandas
 openpyxl
+docling
 
 # --- Web Server ---
 fastapi
 uvicorn
 python-multipart
 pydantic
+
+onnxruntime-gpu
+torchvision 
+torchaudio

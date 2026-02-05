@@ -1,102 +1,104 @@
-# High-Performance Local RAG System (English Edition)
+# High-Performance Local RAG System (English Enterprise Edition)
 
-> **A massive-scale, offline, and secure AI assistant capable of chatting with 10,000+ page documents.**
-> Optimized for English content, utilizing **FastAPI**, **PyMuPDF**, **RapidOCR**, and **Llama 3.2**.
+> **A massive-scale, offline, and secure AI assistant capable of ingesting and querying 10,000+ page documents.**
+> Built for strict English accuracy using **FastAPI**, **PyMuPDF**, **RapidOCR**, and **Llama 3.2**.
 
 ---
 
 ## Overview
 
-This system is designed to handle **"Big Data"** documents locally. Unlike standard RAG demos that crash with large files, this architecture uses **Streaming Generators** and **Batch Processing** to ingest massive PDFs (books, legal docs, technical manuals) without exhausting RAM.
+This project is a **production-ready Local RAG (Retrieval-Augmented Generation)** system designed to solve the common limitations of standard RAG demos:
 
-It features a **Hybrid Parsing Engine** that automatically switches between text extraction (for speed) and OCR (for scanned pages).
+1. **Memory Management:** Uses **Streaming Generators** to process massive files (e.g., legal docs, books) page-by-page without crashing RAM.
+2. **Hybrid Parsing:** Intelligently switches between **PyMuPDF** (ultra-fast text extraction) and **RapidOCR** (GPU-accelerated optical recognition) for scanned pages.
+3. **Strict English Compliance:** Engineered prompts ensure the AI answers **only in English** and adheres strictly to the provided context.
 
 ---
 
 ## System Architecture & Data Flow
 
-The system follows a streamlined pipeline for ingestion and retrieval:
+### 1. Data Ingestion Pipeline (The "Build" Flow)
+
+This diagram illustrates how a file travels from upload to the vector database.
 
 ```mermaid
 graph TD
-    %% Ingestion Pipeline
-    User[User Upload] -->|1. Documents| API[FastAPI Server]
-    API -->|2. Stream| Loader[Document Loader]
+    User[User Upload] -->|1. File| API[FastAPI Server]
+    API -->|2. Stream| Loader[DocumentLoader]
     
-    subgraph Parsing[Parsing Engine]
-        Loader -->|Digital PDF| PyMuPDF[PyMuPDF Fast Parser]
-        Loader -->|Scanned| OCR[RapidOCR Engine]
+    subgraph Parsing[Smart Parsing Engine]
+        Loader --> Router{File Type}
+        Router -->|Text/CSV| TextParser[Text Parser]
+        Router -->|PDF| PDFEngine[PyMuPDF]
+        
+        PDFEngine --> Check{Has Text?}
+        Check -->|Yes| RawText[Raw Text]
+        Check -->|No| OCR[RapidOCR GPU]
+        OCR --> RawText
     end
     
-    PyMuPDF -->|Raw Text| Splitter[Text Splitter]
-    OCR -->|Raw Text| Splitter
-    Splitter -->|Chunks| Embed[Embeddings Model]
-    Embed -->|Vectors| DB[(ChromaDB)]
+    RawText -->|Stream| Splitter[Text Splitter]
+    Splitter -->|Chunks| Batcher[Batch Processor]
+    
+    subgraph Vector[Vectorization]
+        Batcher -->|Batch 200| Embed[all-mpnet-base-v2]
+        Embed -->|768-d Vectors| DB[(ChromaDB)]
+    end
+```
 
-    %% Retrieval Pipeline
-    User -->|3. Question| API
-    API -->|4. Query| Chain[QA Chain]
-    Chain -->|5. Search| DB
-    DB -->|6. Context| LLM[Llama 3.2]
+### 2. Query Retrieval Pipeline (The "Chat" Flow)
+
+How the system finds the answer to your question.
+
+```mermaid
+graph LR
+    User[User Question] -->|1. Query| API[FastAPI]
+    API -->|2. Process| RAG[RAG Engine]
+    
+    subgraph Retrieval[Retrieval Core]
+        RAG -->|3. Search| DB[(ChromaDB)]
+        DB -->|4. MMR k=10| Context[Top Contexts]
+    end
+    
+    subgraph Generation[Generation Core]
+        Context -->|5. Template| Prompt[English Prompt]
+        Prompt -->|6. Generate| LLM[Llama 3.2]
+    end
+    
     LLM -->|7. Answer| User
 ```
 
 ---
 
-## Key Features
+## Tech Stack & Key Components
 
-### 1. Extreme Performance
-
-* **PyMuPDF Integration:** Parses text-based PDFs at 1000+ pages/second
-* **Generators & Yields:** Uses Python generators to process files page-by-page. Never loads the full file into RAM
-* **Batch Ingestion:** Saves vectors to ChromaDB in chunks of 200 to prevent memory overflows
-
-### 2. Hybrid OCR Support
-
-* **Auto-Detection:** Automatically detects if a PDF page is scanned image or text
-* **RapidOCR:** Triggers ONNX-based OCR only when necessary, ensuring speed without sacrificing accuracy
-
-### 3. English-Optimized Intelligence
-
-* **Model:** Uses `sentence-transformers/all-mpnet-base-v2` (768 dimensions) for superior English semantic understanding
-* **Strict Prompting:** System prompts force the LLM to answer strictly in English and avoid hallucinations
-
-### 4. 100% Offline & Private
-
-* No data leaves your machine
-* Works without an internet connection (after initial model download)
+| Component | Technology | Description |
+|-----------|-----------|-------------|
+| **Backend Framework** | FastAPI | Async, high-performance web server handling API requests |
+| **LLM** | Llama 3.2 (via Ollama) | Lightweight yet powerful model for reasoning and generation |
+| **Embeddings** | all-mpnet-base-v2 | The gold standard for English semantic search (768 dimensions) |
+| **Vector Database** | ChromaDB | Local, persistent storage for vector embeddings |
+| **PDF Engine** | PyMuPDF (fitz) | Renders and extracts text from PDFs at >1000 pages/sec |
+| **OCR Engine** | RapidOCR | ONNX-based OCR that runs on GPU/CPU for scanned docs |
+| **Orchestration** | LangChain | Manages the retrieval chains and prompt templates |
 
 ---
 
-## Tech Stack
-
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Backend** | FastAPI | Async high-performance web server |
-| **LLM** | Llama 3.2 (Ollama) | Generation & Reasoning |
-| **Embeddings** | all-mpnet-base-v2 | High-quality English vectorization |
-| **Vector DB** | ChromaDB | Local vector storage |
-| **Parsing** | PyMuPDF (fitz) | High-speed PDF reading |
-| **OCR** | RapidOCR | Scanned document processing |
-| **Frontend** | HTML5 / JS | Clean, dark-mode user interface |
-
----
-
-## Installation Guide
+## Installation & Setup
 
 ### Prerequisites
 
-1. **Python 3.10+** installed
-2. **Ollama** installed and running
+* **Python 3.10+**
+* **Ollama** installed and running (`ollama serve`)
 
-### Step 1: Setup Environment
+### Step 1: Environment Setup
 
 ```bash
-# Clone repository
+# Clone the repository
 git clone <your-repo-url>
 cd my_rag_project
 
-# Create virtual env
+# Create Virtual Environment
 python -m venv venv
 
 # Activate (Windows)
@@ -108,15 +110,22 @@ source venv/bin/activate
 
 ### Step 2: Install Dependencies
 
+Run this command to install the optimized libraries:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-**Note:** First run requires internet to download:
-- Embedding models (~420MB)
-- OCR models (~10MB)
+#### For GPU Support (Optional but Recommended)
 
-### Step 3: Pull LLM Model
+If you have an NVIDIA GPU, install the CUDA version of PyTorch:
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install onnxruntime-gpu
+```
+
+### Step 3: Download Model
 
 ```bash
 ollama pull llama3.2
@@ -128,44 +137,155 @@ ollama pull llama3.2
 
 ### 1. Start the Server
 
+Launch the backend and frontend simultaneously:
+
 ```bash
 python main.py
 ```
 
 You should see:
 ```
+🚀 Starting English-Optimized RAG Server...
 INFO:     Uvicorn running on http://localhost:8000
-INFO:     RAG System initialized successfully!
 ```
 
-### 2. Access the UI
+### 2. Access the Interface
 
-Open your browser at `http://localhost:8000`
+Open your browser and go to: **http://localhost:8000**
 
-### 3. Ingest Data
+### 3. Workflow
 
-* Upload your PDF/TXT/CSV files
-* Click **"Refresh Database"** (Watch the terminal for progress bars!)
-* Processing speed: ~1000 pages/minute for text PDFs, ~50 pages/minute with OCR
+1. **Upload:** Click "Upload Documents" and select your PDF/TXT files
+2. **Ingest:** Click "Refresh Database"
+   * Watch the terminal: You will see the system processing pages and switching to OCR if needed
+3. **Chat:** Type your question. The system will answer strictly in English and cite sources
 
-### 4. Chat
+---
 
-* Ask questions in English
-* The system will cite sources from your documents
-* Responses include page numbers and document names
+## Configuration
+
+### Switching Computation Device (CPU/GPU)
+
+The system is **Auto-Detecting**:
+
+* **Embeddings:** In `model_manager.py`, it automatically checks `torch.cuda.is_available()`
+* **OCR:** In `document_loader.py`, it attempts to initialize RapidOCR with GPU flags. If it fails, it gracefully falls back to CPU
+
+### Adjusting Chunk Sizes
+
+To change how text is split (e.g., for very dense technical manuals), edit `document_loader.py`:
+
+```python
+self.text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1200,   # Increase for more context per chunk
+    chunk_overlap=300  # Increase to ensure continuity
+)
+```
+
+### Customizing Retrieval Parameters
+
+Edit `rag_engine.py` to adjust how many chunks are retrieved:
+
+```python
+retriever = self.vectorstore.as_retriever(
+    search_type="mmr",
+    search_kwargs={
+        "k": 10,          # Number of chunks to retrieve
+        "fetch_k": 30,    # Initial candidates for MMR
+        "lambda_mult": 0.5  # Diversity vs relevance balance
+    }
+)
+```
+
+### LLM Temperature Settings
+
+Edit `model_manager.py` to control response randomness:
+
+```python
+self.llm = Ollama(
+    model="llama3.2",
+    temperature=0.1,   # Lower = more deterministic (0.0-1.0)
+    num_ctx=4096      # Context window size
+)
+```
+
+---
+
+## Troubleshooting
+
+### Error: Collection expecting embedding with dimension of 384, got 768
+
+**Cause:** You switched from a smaller model (all-MiniLM) to a larger one (all-mpnet) without clearing the old database.
+
+**Fix:**
+1. Stop the server
+2. Delete the `./db` folder
+3. Restart and click "Refresh Database"
+
+### Error: ModuleNotFoundError: No module named 'langchain.chains'
+
+**Cause:** Version mismatch in LangChain packages.
+
+**Fix:**
+```bash
+pip install -U langchain langchain-community langchain-core
+```
+
+### Slow Performance on Scanned Docs
+
+**Cause:** OCR is running on CPU.
+
+**Fix:** Ensure you installed `onnxruntime-gpu` and the CUDA version of PyTorch (see Step 2)
+
+### Ollama Connection Error
+
+**Error:** `Ollama call failed with status code 404`
+
+**Fix:**
+1. Verify Ollama is running:
+   ```bash
+   ollama serve
+   ```
+2. Confirm the model is installed:
+   ```bash
+   ollama list
+   ollama pull llama3.2
+   ```
+
+### Out of Memory (OOM) Errors
+
+**Symptoms:** Server crashes during processing large files
+
+**Solutions:**
+1. Reduce batch size in `document_loader.py`:
+   ```python
+   BATCH_SIZE = 100  # Default is 200
+   ```
+2. Process files one at a time
+3. Increase system RAM (recommended: 16GB+)
+
+### Frontend Shows "Demo Mode"
+
+**Cause:** Backend not accessible
+
+**Fix:**
+1. Verify server is running at `http://localhost:8000`
+2. Check browser console (F12) for errors
+3. Clear cache (`Ctrl+Shift+R`)
 
 ---
 
 ## Performance Benchmarks
 
-### Document Processing Speed
+### Processing Speed
 
-| Document Type | Size | Processing Time | Method |
-|--------------|------|----------------|--------|
-| Text PDF | 1,000 pages | ~60 seconds | PyMuPDF |
-| Scanned PDF | 1,000 pages | ~20 minutes | RapidOCR |
-| Mixed PDF | 1,000 pages | ~5 minutes | Hybrid Auto-detect |
-| Large Book | 10,000 pages | ~10 minutes | Streaming Generator |
+| Document Type | Pages | Processing Time | Method |
+|--------------|-------|----------------|--------|
+| Text PDF | 1,000 | ~60 seconds | PyMuPDF |
+| Scanned PDF | 1,000 | ~20 minutes | RapidOCR CPU |
+| Scanned PDF | 1,000 | ~5 minutes | RapidOCR GPU |
+| Mixed PDF | 1,000 | ~5 minutes | Hybrid Auto-detect |
+| Large Book | 10,000 | ~10 minutes | Streaming Generator |
 
 ### Memory Usage
 
@@ -174,12 +294,12 @@ Open your browser at `http://localhost:8000`
 | Idle Server | ~500 MB | Base FastAPI + Models |
 | Processing 1000-page PDF | ~2 GB | Peak during embedding |
 | Query Execution | ~1.5 GB | Includes LLM inference |
-| Total Recommended | **8 GB** | For optimal performance |
+| **Recommended Total** | **8-16 GB** | For optimal performance |
 
 ### Query Performance
 
 * **Vector Search:** ~50ms for 100,000 chunks
-* **LLM Generation:** 2-5 seconds (depends on context length)
+* **LLM Generation:** 2-5 seconds (context dependent)
 * **End-to-End:** ~3-7 seconds per query
 
 ---
@@ -219,19 +339,19 @@ my_rag_project/
 ```http
 GET /health
 ```
-Returns server status and configuration.
+Returns server status and system information.
 
 ### System Status
 ```http
 GET /api/status
 ```
-Returns RAG initialization state.
+Returns RAG initialization state and readiness.
 
 ### List Documents
 ```http
 GET /api/documents
 ```
-Returns all documents with chunk counts and metadata.
+Returns all documents with metadata and chunk counts.
 
 ### Upload Documents
 ```http
@@ -255,7 +375,7 @@ Returns AI-generated answer with source citations.
 ```http
 POST /api/refresh
 ```
-Rebuilds vector database from all documents in `documents/` folder.
+Rebuilds vector database from all documents.
 
 ### Clear Database
 ```http
@@ -265,237 +385,118 @@ Deletes all vectors and resets the system.
 
 ---
 
-## Troubleshooting
-
-### Issue: Dimension Mismatch (384 vs 768)
-
-**Error Message:**
-```
-Collection expecting embedding with dimension of 384, got 768
-```
-
-**Solution:**
-1. Stop the server (`Ctrl+C`)
-2. Delete the `./db` folder (This happens when upgrading embedding models)
-3. Restart the server with `python main.py`
-
-### Issue: ModuleNotFoundError for langchain.chains
-
-**Error Message:**
-```
-ModuleNotFoundError: No module named 'langchain.chains'
-```
-
-**Solution:**
-Ensure you have the latest LangChain packages:
-```bash
-pip install -U langchain langchain-community langchain-core
-```
-
-### Issue: Out of Memory (OOM) Errors
-
-**Symptoms:**
-- Server crashes during large file processing
-- System becomes unresponsive
-
-**Solutions:**
-1. **Reduce Batch Size:** Edit `document_loader.py`:
-   ```python
-   BATCH_SIZE = 100  # Reduce from 200 to 100
-   ```
-
-2. **Process Files Individually:** Upload one large file at a time
-
-3. **Increase System RAM:** Recommend 16GB for processing 10,000+ page documents
-
-### Issue: Ollama Connection Failed
-
-**Error Message:**
-```
-Ollama call failed with status code 404
-```
-
-**Solution:**
-1. Ensure Ollama is running:
-   ```bash
-   ollama serve
-   ```
-
-2. Pull the model:
-   ```bash
-   ollama pull llama3.2
-   ```
-
-3. Verify the model name in `model_manager.py` matches your installed model
-
-### Issue: Slow OCR Processing
-
-**Symptoms:**
-- Scanned PDFs take too long to process
-
-**Solutions:**
-1. **Skip OCR for Text PDFs:** System auto-detects, but ensure your PDFs aren't unnecessarily scanned
-
-2. **Use GPU Acceleration:** Install ONNX Runtime with GPU support:
-   ```bash
-   pip install onnxruntime-gpu
-   ```
-
-3. **Pre-process Documents:** Use external OCR tools before uploading
-
-### Issue: Frontend Shows "Demo Mode"
-
-**Symptoms:**
-- UI displays demo documents instead of your files
-
-**Solutions:**
-1. Verify backend is running at `http://localhost:8000`
-2. Check browser console (F12) for connection errors
-3. Clear browser cache (`Ctrl+Shift+R`)
-4. Ensure `app.js` points to correct API URL
-
----
-
 ## Advanced Configuration
 
-### 1. Changing Embedding Model
-
-Edit `model_manager.py`:
-
-```python
-def initialize_embeddings(self):
-    # High-quality English model (768 dimensions)
-    return HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-mpnet-base-v2"
-    )
-    
-    # Alternative: Faster but less accurate (384 dimensions)
-    # return HuggingFaceEmbeddings(
-    #     model_name="sentence-transformers/all-MiniLM-L6-v2"
-    # )
-```
-
-**Important:** After changing models, delete `./db` folder and rebuild.
-
-### 2. Adjusting Chunk Parameters
-
-Edit `document_loader.py`:
-
-```python
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,        # Increase for more context
-    chunk_overlap=200,      # Overlap prevents info loss
-    length_function=len,
-    separators=["\n\n", "\n", " ", ""]
-)
-```
-
-**Recommendations:**
-- **Technical Docs:** `chunk_size=1500, overlap=300`
-- **Legal Docs:** `chunk_size=2000, overlap=400`
-- **Books/Novels:** `chunk_size=1000, overlap=200`
-
-### 3. Customizing Retrieval
-
-Edit `rag_engine.py`:
-
-```python
-# Maximum Marginal Relevance (MMR) Search
-retriever = self.vectorstore.as_retriever(
-    search_type="mmr",
-    search_kwargs={
-        "k": 7,              # Number of chunks to retrieve
-        "fetch_k": 20,       # Initial candidates
-        "lambda_mult": 0.5   # Diversity (0=max diversity, 1=max relevance)
-    }
-)
-```
-
-**Search Types:**
-- `"similarity"`: Pure relevance ranking
-- `"mmr"`: Balanced relevance + diversity
-- `"similarity_score_threshold"`: Filter by confidence score
-
-### 4. Tuning LLM Parameters
-
-Edit `model_manager.py`:
-
-```python
-self.llm = Ollama(
-    model="llama3.2",
-    temperature=0.1,     # Lower = more deterministic
-    top_p=0.9,          # Nucleus sampling
-    num_ctx=4096,       # Context window size
-)
-```
-
-### 5. Batch Processing Configuration
+### Batch Processing Settings
 
 Edit `document_loader.py`:
 
 ```python
 BATCH_SIZE = 200  # Vectors to save at once
 
-# For systems with limited RAM:
+# For limited RAM systems:
 BATCH_SIZE = 100
 
-# For high-RAM systems:
+# For high-RAM systems (32GB+):
 BATCH_SIZE = 500
+```
+
+### Search Algorithm Selection
+
+Edit `rag_engine.py`:
+
+```python
+# Option 1: Pure Similarity Search (faster)
+retriever = self.vectorstore.as_retriever(
+    search_type="similarity",
+    search_kwargs={"k": 10}
+)
+
+# Option 2: MMR (better diversity)
+retriever = self.vectorstore.as_retriever(
+    search_type="mmr",
+    search_kwargs={
+        "k": 10,
+        "fetch_k": 30,
+        "lambda_mult": 0.5
+    }
+)
+
+# Option 3: Similarity with Threshold
+retriever = self.vectorstore.as_retriever(
+    search_type="similarity_score_threshold",
+    search_kwargs={
+        "score_threshold": 0.7,
+        "k": 10
+    }
+)
+```
+
+### Prompt Engineering
+
+Edit `rag_engine.py` to customize the system prompt:
+
+```python
+prompt_template = """
+You are a precise AI assistant specialized in English documentation.
+
+STRICT RULES:
+1. Answer ONLY in English
+2. Base your answer ONLY on the provided context
+3. If the context doesn't contain the answer, say "I don't have enough information"
+4. Cite specific sources when possible
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:
+"""
 ```
 
 ---
 
 ## Performance Optimization Tips
 
-### 1. System Requirements
+### System Requirements
 
 **Minimum:**
-- CPU: 4 cores
+- CPU: 4 cores, 2.5 GHz
 - RAM: 8 GB
-- Storage: 10 GB SSD
+- Storage: 20 GB SSD
+- GPU: None (CPU mode)
 
 **Recommended:**
-- CPU: 8+ cores
+- CPU: 8 cores, 3.0 GHz
 - RAM: 16 GB
 - Storage: 50 GB NVMe SSD
+- GPU: NVIDIA GTX 1660 or better (6GB+ VRAM)
 
 **Optimal:**
-- CPU: 12+ cores
+- CPU: 12+ cores, 3.5 GHz
 - RAM: 32 GB
 - Storage: 100 GB NVMe SSD
-- GPU: Optional, for Ollama acceleration
+- GPU: NVIDIA RTX 3060 or better (8GB+ VRAM)
 
-### 2. Speed Improvements
+### Speed Improvements
 
-**For Faster Processing:**
-1. Use PyMuPDF-compatible PDFs (avoid scanned documents)
-2. Enable SSD storage for `./db` folder
-3. Increase `BATCH_SIZE` if you have more RAM
-4. Use GPU-accelerated Ollama for faster LLM inference
+1. **Use GPU Acceleration:**
+   - Install CUDA toolkit
+   - Install `onnxruntime-gpu`
+   - Verify GPU detection in logs
 
-**For Better Accuracy:**
-1. Use higher quality embeddings (all-mpnet-base-v2)
-2. Increase `chunk_overlap` to reduce context loss
-3. Retrieve more chunks (`k=10` instead of `k=7`)
-4. Use lower temperature for LLM (0.1 instead of 0.7)
+2. **Optimize Chunk Size:**
+   - Larger chunks = fewer vectors = faster search
+   - Trade-off: may reduce precision
 
-### 3. Database Optimization
+3. **Database Maintenance:**
+   - Periodically compact ChromaDB
+   - Rebuild index if queries slow down
 
-**Regular Maintenance:**
-```bash
-# Compact database (reduces size)
-python -c "
-from chromadb import Client
-client = Client(path='./db')
-client.heartbeat()  # Triggers cleanup
-"
-```
-
-**Reindexing:**
-If queries become slow after many documents:
-1. Export your documents
-2. Delete `./db` folder
-3. Re-upload and rebuild
+4. **Use SSD Storage:**
+   - Store `./db` on NVMe SSD
+   - Significant speedup for large databases
 
 ---
 
@@ -503,139 +504,113 @@ If queries become slow after many documents:
 
 ### Local-Only Architecture
 
-* ✅ **No Cloud Dependency:** All processing on your device
-* ✅ **Offline Capable:** Works without internet after setup
+* ✅ **No Cloud:** All processing on your device
+* ✅ **Offline:** Works without internet after setup
 * ✅ **No Telemetry:** Zero data collection
-* ✅ **Air-Gapped Compatible:** Can run on isolated networks
+* ✅ **Air-Gapped:** Compatible with isolated networks
 
-### Deployment Warnings
+### Production Deployment
 
-**Do NOT:**
-- ❌ Expose server to public internet without authentication
-- ❌ Use default settings for production environments
-- ❌ Store sensitive data without encryption at rest
-
-**For Production Use:**
-1. Add authentication (JWT tokens)
-2. Enable HTTPS (reverse proxy with Nginx)
-3. Implement rate limiting
-4. Add input sanitization
-5. Enable audit logging
+**Do NOT expose to internet without:**
+1. Authentication (JWT, OAuth)
+2. HTTPS (reverse proxy)
+3. Rate limiting
+4. Input sanitization
+5. Audit logging
 
 ---
 
 ## Use Cases
 
 ### Academic Research
-- Process entire textbooks and research papers
-- Cross-reference multiple sources
-- Generate literature reviews
+- Process textbooks and papers
+- Cross-reference citations
+- Literature review automation
 
 ### Legal Analysis
-- Search through case law and statutes
-- Extract relevant clauses
-- Compare contract versions
+- Search case law
+- Contract comparison
+- Clause extraction
 
 ### Technical Documentation
-- Query API documentation
-- Find code examples
-- Navigate large codebases
+- API documentation search
+- Code example retrieval
+- Version comparison
 
 ### Business Intelligence
-- Analyze reports and presentations
-- Extract key metrics
-- Compare quarterly data
+- Report analysis
+- Metric extraction
+- Trend identification
 
 ---
 
 ## Known Limitations
 
-1. **Language:** Optimized for English. Other languages may have reduced accuracy
-2. **Document Types:** Best with text-based PDFs. Heavily formatted documents may lose structure
-3. **Context Window:** Limited to ~4096 tokens per query (depends on LLM model)
-4. **Image Understanding:** Extracts text from images via OCR, but cannot "see" visual content
-5. **Real-time Updates:** Requires manual database refresh after adding documents
+1. **Language:** Optimized for English only
+2. **Context Window:** Limited to ~4096 tokens
+3. **Image Content:** OCR extracts text but cannot "see" images
+4. **Table Parsing:** Complex tables may lose structure
+5. **Real-time:** Requires manual refresh after adding documents
 
 ---
 
 ## Roadmap
 
-### Version 2.0 (Planned)
-- [ ] Streaming responses for real-time answers
-- [ ] Multi-user support with session management
-- [ ] Document versioning and change tracking
-- [ ] Export conversations to PDF/DOCX
-- [ ] Advanced filters (date, author, document type)
+### Version 2.0
+- [ ] Streaming responses
+- [ ] Multi-user sessions
+- [ ] Document versioning
+- [ ] Export conversations
+- [ ] Advanced filters
 
-### Version 3.0 (Future)
-- [ ] Multi-modal support (images, charts, tables)
-- [ ] Automatic document summarization
-- [ ] Question suggestions based on context
-- [ ] Integration with cloud storage (optional)
-- [ ] Mobile app (iOS/Android)
+### Version 3.0
+- [ ] Multi-modal support
+- [ ] Auto-summarization
+- [ ] Question suggestions
+- [ ] Cloud storage integration
+- [ ] Mobile app
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Areas for improvement:
+Contributions welcome! Focus areas:
 
-1. **Performance:** Optimize chunking algorithms
-2. **Parsers:** Add support for more file formats
-3. **UI/UX:** Enhance frontend design
-4. **Testing:** Add unit and integration tests
-5. **Documentation:** Improve code comments
+1. Performance optimization
+2. New file format support
+3. UI/UX improvements
+4. Test coverage
+5. Documentation
 
-### Development Setup
+---
 
-```bash
-# Install dev dependencies
-pip install -r requirements-dev.txt
+## License
 
-# Run tests
-pytest tests/
-
-# Check code quality
-flake8 .
-black .
-```
+MIT License - Free to use and modify
 
 ---
 
 ## Acknowledgments
 
-* **PyMuPDF (fitz)** for blazing-fast PDF parsing
-* **RapidOCR** for efficient ONNX-based OCR
+* **PyMuPDF** for fast PDF parsing
+* **RapidOCR** for efficient OCR
 * **LangChain** for LLM orchestration
-* **ChromaDB** for local vector storage
-* **FastAPI** for modern async web framework
-* **Ollama** for easy local LLM deployment
-* **Sentence Transformers** for high-quality embeddings
+* **ChromaDB** for vector storage
+* **FastAPI** for async framework
+* **Ollama** for local LLM serving
 
 ---
 
-## Support & Contact
+## Support
 
-For issues, questions, or feature requests:
-1. Check the **Troubleshooting** section above
-2. Review **Advanced Configuration** for customization
-3. Open an issue on GitHub with:
-   - System specs
-   - Error logs
-   - Steps to reproduce
+For issues:
+1. Check Troubleshooting section
+2. Review logs in terminal
+3. Verify all prerequisites
+4. Open GitHub issue with details
 
 ---
 
 ## Disclaimer
 
-This system is a local AI assistant designed for personal and research use. Always verify critical information from AI responses against original documents. Accuracy depends on:
-- Document quality and formatting
-- LLM model capabilities
-- Embedding model relevance
-- Chunk size and retrieval parameters
-
-**Not recommended for:**
-- Medical diagnosis
-- Legal advice (consult a lawyer)
-- Financial decisions (consult an advisor)
-- Safety-critical applications
+This is a local AI assistant for personal/research use. Always verify critical information against original documents. Not recommended for medical, legal, or financial advice without professional consultation.

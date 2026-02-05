@@ -2,6 +2,7 @@ import os
 import glob
 import fitz  # PyMuPDF
 import pandas as pd
+import torch
 from typing import Iterator
 from langchain_community.document_loaders import CSVLoader, TextLoader
 from langchain_core.documents import Document
@@ -12,22 +13,40 @@ class DocumentLoader:
     """
     Enterprise Loader (English Optimized):
     - Uses PyMuPDF for speed (10k+ pages support).
-    - Uses RapidOCR for scanned docs.
+    - Uses RapidOCR for scanned docs (Auto GPU/CPU).
     - Optimized chunking for English text structure.
     """
 
     def __init__(self, directory_path="./documents"):
         self.directory_path = directory_path
         
-        # Initialize RapidOCR
+        #1. GPU OCR detection
+        use_gpu = torch.cuda.is_available()
+        device_name = "GPU" if use_gpu else "CPU"
+        
+        # 2. Attempt to run OCR based on the device
         try:
-            self.ocr_engine = RapidOCR()
-        except:
-            self.ocr_engine = None
-            print("⚠️ Warning: RapidOCR not initialized.")
+            if use_gpu:
+                # Attempting to run the GPU version
+                self.ocr_engine = RapidOCR(det_use_gpu=True, cls_use_gpu=True, rec_use_gpu=True)
+            else:
+                # Working with the CPU version
+                self.ocr_engine = RapidOCR(det_use_gpu=False, cls_use_gpu=False, rec_use_gpu=False)
+            
+            print(f"🚀 RapidOCR initialized on: {device_name}")
+            
+        except Exception as e:
+            # In case of total failure (rare occurrence)
+            print(f"⚠️ Warning: RapidOCR failed to init on {device_name}. Error: {e}")
+            try:
+                # Last attempt (CPU fallback)
+                self.ocr_engine = RapidOCR(det_use_gpu=False, cls_use_gpu=False, rec_use_gpu=False)
+                print("⚠️ Fallback to RapidOCR on CPU success.")
+            except:
+                self.ocr_engine = None
+                print("❌ RapidOCR completely disabled.")
 
-        # English-Optimized Splitter
-        # Larger chunk size for English to capture full context
+        # Text breakdown (improved English)
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1200, 
             chunk_overlap=300,
@@ -38,6 +57,7 @@ class DocumentLoader:
         """Helper: Convert PDF page to image and run OCR"""
         if not self.ocr_engine: return ""
         try:
+            # Improve resolution by making the image larger (matrix=2)
             pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
             img_bytes = pix.tobytes("png")
             result, _ = self.ocr_engine(img_bytes)
@@ -70,7 +90,7 @@ class DocumentLoader:
                     text = page.get_text()
                     source_type = "digital"
                     
-                    # Check for scanned pages (low text count)
+                    # If the text is very small, we consider it scanned and activate OCR
                     if len(text.strip()) < 50:
                         ocr_text = self.extract_text_from_scanned_page(page)
                         if len(ocr_text.strip()) > len(text.strip()):
@@ -109,7 +129,6 @@ class DocumentLoader:
                 print(f"❌ Error loading TXT {file_path}: {e}")
 
         # --- 3. CSV & Excel (Data Files) ---
-        # (Same efficient loading logic)
         csv_files = glob.glob(os.path.join(self.directory_path, "*.csv"))
         for file_path in csv_files:
             try:

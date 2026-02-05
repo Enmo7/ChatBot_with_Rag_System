@@ -3,6 +3,7 @@ from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
 from model_manager import ModelManager
 
+# Secure import to ensure compatibility with all versions
 try:
     from langchain_classic.chains import RetrievalQA
 except ImportError:
@@ -49,19 +50,22 @@ class RAGEngine:
         if not self.vector_db:
             raise ValueError("Vector DB is not initialized.")
 
+        # k=10 to ensure higher accuracy in large files
         retriever = self.vector_db.as_retriever(
             search_type="mmr",
-            search_kwargs={"k": 7, "fetch_k": 20}
+            search_kwargs={"k": 10, "fetch_k": 30}
         )
         
+        
         prompt_template = """
-        You are a professional AI assistant designed to answer questions based ONLY on the provided context.
+        You are a professional AI research assistant.
+        Your goal is to answer the user's question accurately using ONLY the provided context.
         
         Guidelines:
-        1. Answer ONLY in English. Do not use any other language.
+        1. Answer ONLY in English.
         2. If the answer is not in the context, strictly say: "I cannot find the answer in the provided documents."
         3. Do not make up information.
-        4. Be concise and professional.
+        4. Cite the source document names where appropriate.
 
         Context:
         {context}
