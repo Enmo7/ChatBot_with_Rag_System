@@ -7,7 +7,6 @@
 
 ## Key Features
 
-<<<<<<< HEAD
 * **100% Offline & Private:** Your data never leaves your device. Uses local LLMs (Ollama) and local Vector DB (Chroma).
 * **High Performance:** Powered by **FastAPI** for an asynchronous, lightning-fast backend.
 * **Multimodal Parsing:**
@@ -504,12 +503,6 @@ Planned features:
 
 ---
 
-## License
-
-MIT License - Free to use and modify
-
----
-
 ## Acknowledgments
 
 * **Llama 3.2** by Meta AI
@@ -529,9 +522,3 @@ For issues and questions:
 3. Ensure all prerequisites are installed
 4. Try the demo mode to isolate issues
 5. Open an issue on GitHub
-
----
-
-## Disclaimer
-
-This is a local AI system for personal use. Always verify important information from the AI's responses against the original documents. The accuracy depends on document quality and the LLM model used.
