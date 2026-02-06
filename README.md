@@ -95,7 +95,7 @@ graph LR
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/Enmo7/ChatBot_with_Rag_System.git
 cd my_rag_project
 
 # Create Virtual Environment
