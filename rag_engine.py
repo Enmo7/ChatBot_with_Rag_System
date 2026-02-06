@@ -40,7 +40,7 @@ class RAGEngine:
         # fetch_k=20 for diversity (MMR)
         retriever = self.vector_db.as_retriever(
             search_type="mmr",
-            search_kwargs={"k": 6, "fetch_k": 20, "lambda_mult": 0.5}
+            search_kwargs={"k": 10, "fetch_k": 20, "lambda_mult": 0.5}
         )
         
         prompt_template = """

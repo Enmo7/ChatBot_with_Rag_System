@@ -1,160 +1,148 @@
 import os
-import shutil
 import asyncio
 import aiofiles
 import html
+import csv
+import io
 from typing import List
 from fastapi import FastAPI, File, UploadFile, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-
-# Security & Limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from document_loader import DocumentLoader
 from rag_engine import RAGEngine
+from traceability_auditor import TraceabilityAuditor
 
 WEB_FOLDER = "./web"
 UPLOAD_FOLDER = "./documents"
 DB_FOLDER = "./db"
+QUERY_TIMEOUT = 60 
+
+# ✅ FIX P0: Security Constants
 ALLOWED_EXTENSIONS = {'pdf', 'txt', 'csv', 'xlsx', 'png', 'jpg', 'jpeg', 'docx', 'pptx'}
 MAX_FILE_SIZE = 500 * 1024 * 1024 
-QUERY_TIMEOUT = 60 # Seconds
 
-# Setup Rate Limiter
 limiter = Limiter(key_func=get_remote_address)
-
 if not os.path.exists(UPLOAD_FOLDER): os.makedirs(UPLOAD_FOLDER)
 
 app = FastAPI(title="Local RAG System (Enterprise)")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 rag_system = RAGEngine(DB_FOLDER)
+auditor = TraceabilityAuditor()
 system_state = {"is_db_ready": False}
 
 if os.path.exists(DB_FOLDER) and os.listdir(DB_FOLDER):
-    try:
-        print("🔄 Loading existing database...")
-        rag_system.initialize_db()
-        system_state["is_db_ready"] = True
-        print("✅ Database loaded!")
-    except Exception as e:
-        print(f"⚠️ Load DB Error: {e}")
+    try: rag_system.initialize_db(); system_state["is_db_ready"] = True
+    except: pass
 
 class QueryRequest(BaseModel):
     query: str
 
-def sanitize_input(text: str) -> str:
-    """Sanitize input to prevent injection/XSS."""
-    text = html.escape(text)
-    for keyword in ['DROP ', 'DELETE ', 'INSERT ', 'UPDATE ']:
-        text = text.replace(keyword, '')
-    return text[:2000]
+# Helper for file validation
+def validate_file(filename: str, size: int):
+    ext = filename.split('.')[-1].lower() if '.' in filename else ''
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(400, f"File type '{ext}' not allowed.")
+    if size > MAX_FILE_SIZE:
+        raise HTTPException(400, "File too large.")
 
-def allowed_file(filename: str) -> bool:
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-@app.get("/api/status")
-async def check_status():
-    if system_state["is_db_ready"]: return {"status": "ready"}
-    if os.listdir(UPLOAD_FOLDER): return {"status": "ready", "msg": "Needs Refresh"}
-    return {"status": "initializing"}
-
-@app.get("/api/documents")
-async def list_documents(page: int = 1, limit: int = 50):
-    """Paginated document listing."""
-    docs = []
-    if os.path.exists(UPLOAD_FOLDER):
-        files = sorted(os.listdir(UPLOAD_FOLDER))
-        total = len(files)
-        start = (page - 1) * limit
-        paginated = files[start : start + limit]
+@app.post("/api/traceability/master-upload")
+@limiter.limit("5/minute") # ✅ Rate Limit Added
+async def upload_master_list(request: Request, file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        validate_file(file.filename, len(content)) # Check size
         
-        for filename in paginated:
-            file_path = os.path.join(UPLOAD_FOLDER, filename)
-            if os.path.isfile(file_path):
-                size = os.path.getsize(file_path)
-                ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'txt'
-                docs.append({"name": filename, "type": ext, "size": size})
-    return {"documents": docs, "page": page, "total": total}
+        decoded = content.decode('utf-8')
+        csv_reader = csv.reader(io.StringIO(decoded))
+        next(csv_reader, None)
+        reqs = [(row[0].strip(), row[1].strip(), row[2].strip() if len(row)>2 else "Gen", "Active") for row in csv_reader if len(row)>=2]
+        
+        rag_system.metadata_store.add_master_requirements(reqs)
+        # ✅ Audit Log
+        rag_system.metadata_store.log_action("MASTER_UPLOAD", file.filename, "SUCCESS", f"Added {len(reqs)} reqs")
+        return {"success": True, "count": len(reqs)}
+    except Exception as e:
+        rag_system.metadata_store.log_action("MASTER_UPLOAD", file.filename, "FAILED", str(e))
+        return JSONResponse(status_code=500, content={"success": False, "msg": str(e)})
+
+@app.get("/api/traceability/audit-report")
+async def get_audit_report(page: int = 1, limit: int = 50):
+    return auditor.generate_gap_report(page=page, page_size=limit)
 
 @app.post("/api/upload")
-async def upload_files(files: List[UploadFile] = File(...)):
-    saved_count = 0
+@limiter.limit("10/minute") # ✅ Rate Limit Added
+async def upload_files(request: Request, files: List[UploadFile] = File(...)):
+    saved = 0
+    errors = []
     for file in files:
-        if allowed_file(file.filename):
+        try:
+            # Check content length immediately if available, otherwise check after read
             file_path = os.path.normpath(os.path.join(UPLOAD_FOLDER, file.filename))
             
-            # Async File Write (Non-blocking)
-            try:
-                async with aiofiles.open(file_path, 'wb') as out:
-                    while content := await file.read(1024 * 1024):
-                        await out.write(content)
-            except Exception as e:
-                print(f"Upload Error: {e}")
-                continue
-
-            if os.path.getsize(file_path) > MAX_FILE_SIZE:
-                os.remove(file_path)
-                continue
-            saved_count += 1
+            # Streaming write with size check
+            size = 0
+            async with aiofiles.open(file_path, 'wb') as out:
+                while content := await file.read(1024*1024):
+                    size += len(content)
+                    if size > MAX_FILE_SIZE:
+                        out.close()
+                        os.remove(file_path)
+                        raise HTTPException(400, "File exceeded max size during upload")
+                    await out.write(content)
             
-    if saved_count > 0: return {"success": True, "msg": f"Uploaded {saved_count}"}
-    return JSONResponse(status_code=400, content={"success": False, "msg": "Invalid files"})
+            validate_file(file.filename, size) # Final check
+            saved += 1
+            rag_system.metadata_store.log_action("FILE_UPLOAD", file.filename, "SUCCESS")
+        except Exception as e:
+            errors.append(f"{file.filename}: {str(e)}")
+            rag_system.metadata_store.log_action("FILE_UPLOAD", file.filename, "FAILED", str(e))
+            
+    return {"success": True, "msg": f"Uploaded {saved}, Errors: {len(errors)}"}
 
 @app.post("/api/refresh")
-async def refresh_database():
+@limiter.limit("2/minute") # ✅ Strict Limit for heavy task
+async def refresh_database(request: Request):
     try:
+        rag_system.metadata_store.log_action("REFRESH", "DB", "STARTED")
         loader = DocumentLoader(UPLOAD_FOLDER)
         chunks_gen = loader.process_file_generator()
-        # RAG update is CPU-bound; keeping it blocking here for simplicity
-        # Ideally moved to background task (Celery)
         rag_system.initialize_db(chunks_generator=chunks_gen, batch_size=200)
         system_state["is_db_ready"] = True
+        rag_system.metadata_store.log_action("REFRESH", "DB", "SUCCESS")
         return {"success": True}
     except Exception as e:
+        rag_system.metadata_store.log_action("REFRESH", "DB", "FAILED", str(e))
         return JSONResponse(status_code=500, content={"success": False, "msg": str(e)})
 
 @app.post("/api/query")
-@limiter.limit("20/minute") # Security: Rate Limiting
+@limiter.limit("20/minute") 
 async def query_rag(request: Request, body: QueryRequest):
-    if not system_state["is_db_ready"]:
-        return JSONResponse(status_code=400, content={"success": False, "msg": "DB not ready"})
+    if not system_state["is_db_ready"]: return JSONResponse(status_code=400, content={"success": False, "msg": "DB not ready"})
     
-    clean_query = sanitize_input(body.query)
-    
+    clean_query = html.escape(body.query)
     try:
-        # Timeout Protection
-        async def run_query():
-            qa_chain = rag_system.get_qa_chain()
-            payload = {"input": clean_query, "query": clean_query}
-            return await asyncio.to_thread(qa_chain.invoke, payload)
-
-        response = await asyncio.wait_for(run_query(), timeout=QUERY_TIMEOUT)
+        async def run():
+            qa = rag_system.get_qa_chain()
+            return await asyncio.to_thread(qa.invoke, {"input": clean_query, "query": clean_query})
         
-        answer = response.get('answer') or response.get('result')
-        source_docs = response.get('context') or response.get('source_documents') or []
-        rich_sources = rag_system.enrich_sources(source_docs)
-                
-        return {"success": True, "answer": answer, "sources": rich_sources}
+        resp = await asyncio.wait_for(run(), timeout=QUERY_TIMEOUT)
+        ans = resp.get('answer') or resp.get('result')
+        srcs = rag_system.enrich_sources(resp.get('context') or resp.get('source_documents') or [])
         
-    except asyncio.TimeoutError:
-        return JSONResponse(status_code=504, content={"success": False, "msg": "Query Timeout"})
+        # ✅ Audit Log Query
+        rag_system.metadata_store.log_action("QUERY", clean_query[:50], "SUCCESS")
+        return {"success": True, "answer": ans, "sources": srcs}
     except Exception as e:
-        print(f"Query Error: {e}")
+        rag_system.metadata_store.log_action("QUERY", clean_query[:50], "FAILED", str(e))
         return JSONResponse(status_code=500, content={"success": False, "msg": str(e)})
 
 app.mount("/", StaticFiles(directory=WEB_FOLDER, html=True), name="static")

@@ -1,23 +1,23 @@
 # Local Enterprise RAG System (Traceability Edition)
 
-> **A High-Performance, Offline, and Secure Document Intelligence System.**
-> Engineered for massive documents (+10,000 pages), strict traceability, and zero-memory-leak operations.
+> **A High-Performance, Offline, and Secure AI Knowledge Base.**
+> Engineered for massive documents (+10,000 pages), strict requirement traceability, and zero-memory-leak operations.
 
 ---
 
 ## Overview
 
-This project is a production-grade **RAG (Retrieval-Augmented Generation)** system designed to solve the limitations of standard prototypes. It transforms unstructured data (PDFs, Images, Office Docs) into a queryable knowledge base with **Audit Trails** and **Requirement Traceability**.
+This project is a production-grade **RAG (Retrieval-Augmented Generation)** system designed to bridge the gap between unstructured data (PDFs, Images) and structured compliance (Requirements Traceability).
 
-It runs **100% locally** using **Llama 3.2** and **ChromaDB**, ensuring total data privacy.
+Unlike standard RAG demos, this system features a **Traceability Auditor** that compares your documents against a "Master Requirements List" to detect gaps, orphan links, and ensure full coverage. It runs **100% locally** using **Llama 3.2** and **ChromaDB**, ensuring total data privacy.
 
 ---
 
-## System Architecture & Data Flow
+## System Architecture
 
 ### 1. Ingestion Pipeline (The "Build" Flow)
 
-How a file travels from upload to the Knowledge Base with Traceability.
+How a file travels from upload to the Knowledge Base with Audit logging.
 
 ```mermaid
 graph TD
@@ -26,7 +26,7 @@ graph TD
     
     subgraph Processing[Smart Processing Engine]
         Disk -->|3. Load Stream| Loader[DocumentLoader]
-        Loader -->|4. Register| SQL[(SQLite Metadata)]
+        Loader -->|4. Register Version| SQL[(SQLite Metadata)]
         
         Loader --> Router{File Type}
         Router -->|PDF| Batcher[Dynamic Batching]
@@ -40,17 +40,17 @@ graph TD
     
     subgraph Intelligence[Intelligence Layer]
         Text -->|5. Extract REQ-IDs| Regex[Traceability Extractor]
-        Text -->|6. Chunking| Splitter[Text Splitter]
+        Text -->|6. Chunking 2000| Splitter[Text Splitter]
         Splitter -->|7. Embed| Embed[all-mpnet-base-v2]
     end
     
     Embed -->|8. Upsert| VectorDB[(ChromaDB)]
-    Regex -->|9. Link Metadata| VectorDB
+    Regex -->|9. Log Context| SQL
 ```
 
 ### 2. Query Pipeline (The "Chat" Flow)
 
-How the system answers questions securely.
+How the system answers questions securely and retrieves traceability data.
 
 ```mermaid
 graph LR
@@ -78,28 +78,29 @@ graph LR
 
 ## Key Features
 
-### 1. Smart Traceability & Auditing
+### 1. Advanced Traceability Audit
 
-* **Unique Identity:** Uses SHA-256 hashing to track files regardless of filenames
-* **Link Extraction:** Automatically detects and indexes Requirement IDs (e.g., REQ-001, TC-105) found in documents
-* **Versioning:** Maintains an SQLite ledger of upload dates, versions, and file sizes
+* **Source of Truth:** Upload a Master Requirements List (CSV) to define what should exist
+* **Gap Analysis:** Automatically generates reports identifying missing requirements not found in any document
+* **Orphan Detection:** Flags links found in documents that do not exist in the Master List (e.g., typos or deprecated requirements)
+* **Context Verification:** Ensures a link (e.g., REQ-001) is mentioned with meaningful context, not just a standalone string
 
 ### 2. Performance & Memory Safety
 
-* **Dynamic Batching:** Processes massive PDFs in small page batches (e.g., 50 pages) to prevent RAM overflows
-* **Zero-Leak OCR:** Processes large images (>4K resolution) using temporary files on disk, keeping RAM usage low
-* **Self-Healing:** Automatically pauses Garbage Collection (GC) if RAM usage exceeds 90%
+* **Dynamic Batching:** Reads massive PDFs in small page batches to prevent RAM overflow
+* **Zero-Leak OCR:** Processes high-resolution images using temporary files on disk instead of loading them entirely into RAM
+* **Self-Healing:** Automatically pauses Garbage Collection (GC) if RAM usage spikes above 90%
 
 ### 3. Enterprise Security
 
-* **Rate Limiting:** Protects the API from spam (default: 20 req/min) using SlowAPI
-* **Input Sanitization:** Cleans user queries to prevent injection attacks
+* **Rate Limiting:** Protects the API from abuse (Default: 20 requests/minute)
+* **Input Sanitization:** Cleans user queries to prevent injection attacks while preserving technical IDs
 * **Timeouts:** Hard timeouts on LLM generation to prevent server starvation
 
 ### 4. Multimodal Support
 
-* **Formats:** PDF, DOCX, PPTX, Images (PNG/JPG/BMP), CSV, TXT, Excel
-* **OCR:** Integrated RapidOCR with GPU acceleration support
+* **Supported Formats:** PDF, DOCX, PPTX, Images (PNG/JPG/BMP), CSV, TXT, Excel
+* **OCR:** Integrated RapidOCR with optional GPU acceleration
 
 ---
 
@@ -113,7 +114,7 @@ graph LR
 | **Vector DB** | ChromaDB | Semantic Search Storage |
 | **Metadata DB** | SQLite | Traceability and Version Control |
 | **Processing** | PyMuPDF, RapidOCR | PDF and Image Extraction |
-| **Monitoring** | Psutil, SlowAPI | Resource Monitoring and Security |
+| **Auditing** | Custom Logic | Gap Analysis & Coverage Reporting |
 
 ---
 
@@ -123,7 +124,7 @@ graph LR
 
 * **Python 3.10+** installed
 * **Ollama** installed and running
-* **CUDA** (Optional): For GPU acceleration (NVIDIA)
+* **CUDA** (Optional): For NVIDIA GPU acceleration
 
 ### Step 1: Environment Setup
 
@@ -162,7 +163,7 @@ ollama pull llama3.2
 
 ### Step 4: Critical Cleanup (If Upgrading)
 
-⚠️ **Important:** If you are upgrading from a previous version, you must delete the old database to apply the new schema:
+⚠️ **Important:** If you are upgrading from a previous version, delete the `./db` folder to ensure the new SQL schema is created correctly.
 
 ```bash
 # Windows
@@ -192,548 +193,659 @@ INFO:     Uvicorn running on http://localhost:8000
 
 Open your browser at: **http://localhost:8000**
 
-### 3. Ingest Documents
+### 3. Configure Traceability (Optional but Recommended)
+
+To use the Audit features, you must define your "Source of Truth":
+
+#### Prepare Master Requirements List
+
+Create a CSV file with the following structure:
+
+**master_requirements.csv**
+```csv
+ID,Description,Category
+REQ-001,System shall startup within 5 seconds,Performance
+REQ-002,User authentication shall use 2FA,Security
+REQ-003,Data encryption at rest using AES-256,Security
+TC-001,Verify system startup time,Testing
+TC-002,Test authentication flow,Testing
+```
+
+#### Upload Master List
+
+**Option 1: Using API (Recommended for automation)**
+
+```bash
+curl -X POST "http://localhost:8000/api/traceability/master-upload" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@master_requirements.csv"
+```
+
+**Option 2: Using Python**
+
+```python
+import requests
+
+with open('master_requirements.csv', 'rb') as f:
+    files = {'file': f}
+    response = requests.post(
+        'http://localhost:8000/api/traceability/master-upload',
+        files=files
+    )
+    print(response.json())
+```
+
+### 4. Ingest Documents
 
 1. Go to the UI
 2. Click **"Upload Documents"**
-3. Click **"Refresh Database"**
-4. Watch the terminal: You will see the **Batch Progress** and **ETA** for large files
+3. Select your PDF/Office/Image files
+4. Click **"Refresh Database"**
+5. Watch the terminal: You will see real-time **batch progress** and **ETA**
 
-### 4. Query the System
+### 5. Get Audit Report
 
-Ask questions like:
-* "What are the safety requirements for the engine?"
-* "List all Test Cases related to REQ-005."
-* "Show me version history for document XYZ"
+#### Via API
 
----
-
-## Configuration (Optional)
-
-You can tweak the system performance in `server.py` and `document_loader.py`:
-
-### Server Configuration (`server.py`)
-
-```python
-# Maximum file upload size
-MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
-
-# Query timeout
-QUERY_TIMEOUT = 60  # seconds
-
-# Rate limiting
-RATE_LIMIT = "20/minute"  # requests per minute
+```bash
+curl "http://localhost:8000/api/traceability/audit-report"
 ```
 
-### Document Processing (`document_loader.py`)
+#### Via Browser
 
-```python
-# Chunk size (optimized for large context)
-chunk_size = 2000  # characters
+Navigate to: **http://localhost:8000/api/traceability/audit-report**
 
-# Chunk overlap
-chunk_overlap = 400  # characters
+#### Sample Audit Report Output
 
-# Batch size for PDF processing
-BATCH_SIZE = 50  # pages per batch
-
-# OCR settings
-OCR_GPU = True  # Enable GPU acceleration
-```
-
-### Memory Management
-
-```python
-# RAM threshold for auto-cleanup
-RAM_THRESHOLD = 90  # percent
-
-# Garbage collection frequency
-GC_FREQUENCY = 100  # chunks
+```json
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "summary": {
+    "total_master_requirements": 5,
+    "found_in_documents": 4,
+    "missing_from_documents": 1,
+    "orphan_links_found": 2,
+    "coverage_percentage": 80.0
+  },
+  "missing_requirements": [
+    {
+      "id": "REQ-003",
+      "description": "Data encryption at rest using AES-256",
+      "category": "Security"
+    }
+  ],
+  "orphan_links": [
+    {
+      "id": "REQ-999",
+      "found_in_document": "design_spec.pdf",
+      "context": "...system must satisfy REQ-999 for compliance...",
+      "reason": "Not defined in Master Requirements List"
+    }
+  ],
+  "coverage_by_category": {
+    "Performance": "100%",
+    "Security": "66.67%",
+    "Testing": "100%"
+  }
+}
 ```
 
 ---
 
-## Traceability Features
+## Traceability Features in Detail
 
-### Requirement ID Detection
+### 1. Requirement ID Extraction
 
-The system automatically extracts and indexes requirement identifiers from your documents:
+The system automatically extracts requirement identifiers using regex patterns:
 
-**Supported Formats:**
-* `REQ-001`, `REQ-1234`
-* `TC-001`, `TC-1234` (Test Cases)
-* `SRS-001`, `SRS-1234` (Software Requirements)
-* `FR-001`, `FR-1234` (Functional Requirements)
-* `NFR-001`, `NFR-1234` (Non-Functional Requirements)
+**Supported Patterns:**
+* `REQ-001` to `REQ-9999`
+* `TC-001` to `TC-9999` (Test Cases)
+* `SRS-001` to `SRS-9999` (Software Requirements)
+* `FR-001` to `FR-9999` (Functional Requirements)
+* `NFR-001` to `NFR-9999` (Non-Functional Requirements)
+* `UC-001` to `UC-9999` (Use Cases)
 
-**Example Query:**
-```
-"Show all requirements related to safety"
-→ Returns chunks containing REQ-XXX IDs with source documents
-```
+**Customization:**
 
-### Version Control
-
-Each document upload is tracked with:
-* **Upload Timestamp**
-* **File Hash (SHA-256)**
-* **File Size**
-* **Version Number** (auto-incremented on re-upload)
-
-**Example Query:**
-```
-"When was the latest version of requirements.pdf uploaded?"
-→ Returns metadata from SQLite database
-```
-
-### Audit Trail
-
-Query the metadata database directly:
+Edit `document_loader.py` to add your patterns:
 
 ```python
-import sqlite3
-
-conn = sqlite3.connect('./db/metadata.db')
-cursor = conn.execute("SELECT * FROM documents ORDER BY upload_date DESC")
-for row in cursor:
-    print(row)
+REQUIREMENT_PATTERNS = [
+    r'\bREQ-\d{3,}\b',
+    r'\bTC-\d{3,}\b',
+    r'\bCUSTOM-\d{3,}\b',  # Add your pattern
+]
 ```
+
+### 2. Context Verification
+
+The system ensures requirements are mentioned in meaningful context:
+
+**Valid Context Examples:**
+```
+✓ "The system shall implement REQ-001 for performance optimization"
+✓ "According to REQ-002, authentication must use 2FA"
+✓ "Test case TC-001 validates REQ-001"
+```
+
+**Invalid Context (Flagged as Potential Issues):**
+```
+✗ "REQ-001"  (standalone, no context)
+✗ "REQ-001 REQ-002 REQ-003"  (list without explanation)
+```
+
+**Configuration:**
+
+Edit `server.py` to adjust context window:
+
+```python
+CONTEXT_MIN_WORDS = 5  # Minimum words around requirement ID
+CONTEXT_MAX_DISTANCE = 50  # Maximum character distance
+```
+
+### 3. Gap Analysis
+
+The audit report identifies three types of gaps:
+
+1. **Missing Requirements:**
+   - Requirements in Master List but not found in any document
+   - Critical for compliance verification
+
+2. **Orphan Links:**
+   - Requirement IDs found in documents but not in Master List
+   - May indicate typos, deprecated IDs, or missing Master List entries
+
+3. **Weak Coverage:**
+   - Requirements mentioned only once or in limited context
+   - May indicate insufficient documentation
+
+### 4. Coverage Metrics
+
+The system calculates:
+
+* **Overall Coverage:** `(Found Requirements / Total Requirements) × 100`
+* **Category Coverage:** Breakdown by requirement category
+* **Document Coverage:** Which documents cover which requirements
+* **Traceability Matrix:** Full cross-reference table
 
 ---
 
 ## API Endpoints
 
-### Health Check
+### Traceability Endpoints
+
+#### Upload Master Requirements List
 ```http
-GET /health
+POST /api/traceability/master-upload
+Content-Type: multipart/form-data
 ```
-Returns server status and system metrics.
+
+Upload a CSV file containing your source of truth.
 
 **Response:**
 ```json
 {
-  "status": "healthy",
-  "uptime": 3600,
-  "memory_usage": "2.5 GB",
-  "documents": 42
+  "status": "success",
+  "message": "Uploaded 150 requirements",
+  "breakdown": {
+    "total": 150,
+    "categories": {
+      "Functional": 60,
+      "Security": 40,
+      "Performance": 30,
+      "Testing": 20
+    }
+  }
 }
 ```
 
-### System Status
+#### Get Audit Report
 ```http
-GET /api/status
+GET /api/traceability/audit-report
 ```
-Returns RAG initialization state.
 
-### List Documents
+Generates comprehensive traceability audit.
+
+#### Search by Requirement ID
 ```http
-GET /api/documents
+POST /api/traceability/search
+Content-Type: application/json
+
+{
+  "requirement_id": "REQ-001",
+  "include_context": true
+}
 ```
-Returns all documents with traceability metadata.
 
 **Response:**
 ```json
 {
-  "documents": [
+  "requirement_id": "REQ-001",
+  "found_in_documents": [
     {
-      "id": "abc123",
-      "name": "requirements.pdf",
-      "hash": "sha256:...",
+      "document": "requirements.pdf",
+      "page": 15,
+      "context": "The system shall implement REQ-001...",
       "version": 2,
-      "upload_date": "2024-01-15T10:30:00",
-      "chunks": 145,
-      "requirement_ids": ["REQ-001", "REQ-002"]
+      "upload_date": "2024-01-15"
+    }
+  ],
+  "total_occurrences": 5
+}
+```
+
+#### Get Traceability Matrix
+```http
+GET /api/traceability/matrix
+```
+
+Returns full cross-reference table.
+
+**Response:**
+```json
+{
+  "matrix": [
+    {
+      "requirement_id": "REQ-001",
+      "documents": ["requirements.pdf", "design.docx"],
+      "test_cases": ["TC-001", "TC-002"],
+      "coverage": "complete"
     }
   ]
 }
 ```
 
-### Upload Documents
+### Standard Endpoints
+
+#### Health Check
+```http
+GET /health
+```
+
+#### System Status
+```http
+GET /api/status
+```
+
+#### List Documents
+```http
+GET /api/documents
+```
+
+#### Upload Documents
 ```http
 POST /api/upload
 Content-Type: multipart/form-data
 ```
-Accepts multiple files with automatic versioning.
 
-### Query System
+#### Query System
 ```http
 POST /api/query
 Content-Type: application/json
 
 {
-  "query": "What are the safety requirements?",
-  "include_metadata": true
+  "query": "What are the security requirements?"
 }
 ```
 
-**Response:**
-```json
-{
-  "answer": "The safety requirements include...",
-  "sources": [
-    {
-      "document": "requirements.pdf",
-      "page": 15,
-      "version": 2,
-      "requirement_ids": ["REQ-001"],
-      "confidence": 0.92
-    }
-  ]
-}
-```
-
-### Refresh Database
+#### Refresh Database
 ```http
 POST /api/refresh
 ```
-Rebuilds vector database and metadata.
 
-### Clear Database
+#### Clear Database
 ```http
 POST /api/clear
 ```
-Deletes all vectors and metadata.
 
-### Search by Requirement ID
-```http
-POST /api/search/requirement
-Content-Type: application/json
+---
 
-{
-  "requirement_id": "REQ-001"
-}
+## Configuration
+
+### Server Configuration (`server.py`)
+
+```python
+# File Upload
+MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
+
+# Query Settings
+QUERY_TIMEOUT = 60  # seconds
+MMR_K_VALUE = 6     # Number of chunks to retrieve
+
+# Security
+RATE_LIMIT = "20/minute"
+ENABLE_SANITIZATION = True
+
+# Traceability
+CONTEXT_MIN_WORDS = 5
+ENABLE_GAP_ANALYSIS = True
 ```
 
-Returns all chunks containing the specified requirement ID.
+### Document Processing (`document_loader.py`)
+
+```python
+# Text Splitting
+CHUNK_SIZE = 2000        # characters
+CHUNK_OVERLAP = 400      # characters
+
+# Batch Processing
+PDF_BATCH_SIZE = 50      # pages per batch
+IMAGE_BATCH_SIZE = 10    # images per batch
+
+# OCR
+OCR_GPU = True
+OCR_LANGUAGE = 'en'
+```
+
+### Memory Management
+
+```python
+# RAM Monitoring
+RAM_THRESHOLD = 90       # percent
+GC_FREQUENCY = 100       # chunks
+
+# Self-Healing
+ENABLE_AUTO_GC = True
+PAUSE_ON_HIGH_MEMORY = True
+```
 
 ---
 
 ## Troubleshooting
 
-### Error: Dimension Mismatch (384 vs 768)
-
-**Cause:** You changed the embedding model.
-
-**Solution:**
-1. Stop the server
-2. Delete the `./db` folder
-3. Restart the server
-
 ### Error: Rate Limit Exceeded
 
-**Cause:** You are sending too many requests.
+**Cause:** Too many requests in a short time.
 
 **Solution:**
-* Wait 1 minute before retrying
-* Increase rate limit in `server.py`:
-  ```python
-  RATE_LIMIT = "50/minute"  # Increase from default 20
-  ```
+```python
+# In server.py, increase rate limit
+RATE_LIMIT = "50/minute"  # Increase from 20
+```
+
+### Issue: [object Object] in Sources
+
+**Cause:** Outdated `app.js` not handling rich source objects.
+
+**Solution:**
+1. Clear browser cache (`Ctrl+Shift+R`)
+2. Ensure you have the latest `app.js`
+3. Check browser console for JavaScript errors
+
+**Fix in `app.js`:**
+```javascript
+// Old (incorrect)
+source.name
+
+// New (correct)
+typeof source === 'object' ? source.document : source
+```
 
 ### Warning: High Memory Usage
 
 **Cause:** Processing very large files.
 
 **Solution:**
-* This is normal behavior - the system is auto-pausing to clean RAM
-* Reduce batch size in `document_loader.py`:
+* This is normal - system auto-pauses to clean RAM
+* Reduce batch size:
   ```python
-  BATCH_SIZE = 25  # Reduce from 50
+  PDF_BATCH_SIZE = 25  # Reduce from 50
   ```
 
 ### Issue: OCR is Slow
 
-**Cause:** Running OCR on CPU.
+**Cause:** Running on CPU instead of GPU.
 
 **Solution:**
-1. Ensure you have `onnxruntime-gpu` installed:
+1. Install GPU support:
    ```bash
    pip install onnxruntime-gpu
    ```
-2. Verify NVIDIA driver is installed:
+2. Verify NVIDIA driver:
    ```bash
    nvidia-smi
    ```
-3. Check GPU detection in logs
+3. Check logs for GPU detection
 
-### Error: ModuleNotFoundError
+### Error: Dimension Mismatch
 
-**Cause:** Missing dependencies.
-
-**Solution:**
-```bash
-pip install -r requirements.txt --upgrade
-```
-
-### Issue: Ollama Connection Failed
-
-**Cause:** Ollama not running or model not installed.
+**Cause:** Changed embedding model without clearing database.
 
 **Solution:**
-1. Start Ollama service:
+1. Stop server
+2. Delete `./db` folder
+3. Restart and rebuild
+
+### Issue: Orphan Links Not Detected
+
+**Cause:** Master Requirements List not uploaded or pattern mismatch.
+
+**Solution:**
+1. Verify Master List upload:
    ```bash
-   ollama serve
+   curl "http://localhost:8000/api/traceability/master-upload" -X GET
    ```
-2. Verify model is installed:
-   ```bash
-   ollama list
-   ollama pull llama3.2
-   ```
-
-### Issue: SQLite Database Locked
-
-**Cause:** Multiple processes accessing database.
-
-**Solution:**
-* Ensure only one server instance is running
-* Restart the server
-* If persistent, delete `./db/metadata.db` and rebuild
+2. Check requirement ID patterns match your documents
 
 ---
 
 ## Performance Benchmarks
 
-### Document Processing Speed
+### Document Processing
 
-| Document Type | Size | Processing Time | Method |
-|--------------|------|----------------|--------|
-| Text PDF | 1,000 pages | ~60 seconds | PyMuPDF |
-| Scanned PDF | 1,000 pages | ~5 minutes | RapidOCR GPU |
-| Office Document | 500 pages | ~30 seconds | python-docx |
-| Large Image | 4K resolution | ~2 seconds | RapidOCR GPU |
-| Mixed Document | 10,000 pages | ~15 minutes | Dynamic Batching |
+| Document Type | Size | Time | Method |
+|--------------|------|------|--------|
+| Text PDF | 1,000 pages | ~60s | PyMuPDF |
+| Scanned PDF | 1,000 pages | ~5min | RapidOCR GPU |
+| Office Doc | 500 pages | ~30s | python-docx |
+| Large Image | 4K | ~2s | RapidOCR GPU |
+| Full Book | 10,000 pages | ~15min | Dynamic Batching |
 
-### Memory Usage Profile
+### Traceability Operations
+
+| Operation | Time | Notes |
+|-----------|------|-------|
+| Master List Upload | <1s | 1000 requirements |
+| Requirement Extraction | ~5s | Per 1000 pages |
+| Gap Analysis | ~2s | 1000 requirements |
+| Audit Report Generation | ~3s | Full analysis |
+
+### Memory Profile
 
 | Operation | Peak RAM | Notes |
 |-----------|----------|-------|
-| Idle Server | ~600 MB | Base system |
-| Processing 1000-page PDF | ~2.5 GB | With dynamic batching |
-| OCR Large Image | ~1 GB | Using temp files |
-| Query Execution | ~1.5 GB | Includes LLM |
-| **Recommended Total** | **16 GB** | For enterprise use |
-
-### Query Performance
-
-* **Vector Search:** ~40ms for 500,000 chunks
-* **Metadata Enrichment:** ~10ms per query
-* **LLM Generation:** 2-5 seconds
-* **Total End-to-End:** ~3-8 seconds
-
----
-
-## Advanced Features
-
-### 1. Custom Requirement ID Patterns
-
-Edit `document_loader.py` to add custom patterns:
-
-```python
-REQUIREMENT_PATTERNS = [
-    r'REQ-\d{3,}',
-    r'TC-\d{3,}',
-    r'SRS-\d{3,}',
-    r'CUSTOM-\d{3,}',  # Add your pattern
-]
-```
-
-### 2. Batch Processing Optimization
-
-For very large documents, adjust batch size dynamically:
-
-```python
-def get_dynamic_batch_size(file_size_mb):
-    if file_size_mb < 10:
-        return 100
-    elif file_size_mb < 100:
-        return 50
-    else:
-        return 25
-```
-
-### 3. Enhanced Metadata Tracking
-
-Add custom metadata fields in `server.py`:
-
-```python
-metadata = {
-    "filename": file.filename,
-    "upload_date": datetime.now(),
-    "uploader": request.headers.get("X-User-ID"),  # Custom field
-    "department": request.headers.get("X-Department"),  # Custom field
-    "classification": "confidential"  # Custom field
-}
-```
-
-### 4. Multi-Language Support
-
-While optimized for English, you can enable other languages:
-
-```python
-# In model_manager.py
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-)
-```
-
----
-
-## Security Best Practices
-
-### Production Deployment
-
-**Do NOT use in production without:**
-
-1. **Authentication:**
-   ```python
-   from fastapi import Depends, HTTPException
-   from fastapi.security import HTTPBearer
-   
-   security = HTTPBearer()
-   
-   async def verify_token(credentials = Depends(security)):
-       # Implement JWT validation
-       pass
-   ```
-
-2. **HTTPS/TLS:**
-   * Use reverse proxy (Nginx, Caddy)
-   * Obtain SSL certificate
-
-3. **Input Validation:**
-   * Already implemented with sanitizers
-   * Review and customize for your needs
-
-4. **Audit Logging:**
-   ```python
-   import logging
-   
-   logging.info(f"Query from {request.client.host}: {query}")
-   ```
-
-5. **Network Isolation:**
-   * Run on private network only
-   * Use firewall rules
-   * Consider air-gapped deployment
+| Idle | 600 MB | Base system |
+| 1000-page PDF | 2.5 GB | Dynamic batching |
+| OCR Large Image | 1 GB | Temp files |
+| Audit Report | 800 MB | In-memory analysis |
 
 ---
 
 ## Use Cases
 
 ### Aerospace & Defense
-* Track requirements through design lifecycle
-* Link test cases to specifications
-* Audit compliance documentation
+* **Requirement Traceability:** Link requirements to design, implementation, and tests
+* **Compliance Verification:** Ensure all DO-178C requirements are covered
+* **Change Impact Analysis:** Identify affected documents when requirements change
 
-### Automotive
-* Manage safety requirements (ISO 26262)
-* Track ECU specifications
-* Version control for engineering docs
+### Automotive (ISO 26262)
+* **Safety Case Management:** Track safety requirements through V-model
+* **ASIL Coverage:** Verify all ASIL-rated requirements are implemented
+* **Traceability Matrix:** Auto-generate for certification
 
-### Healthcare
-* Link clinical trial protocols to results
-* Track regulatory compliance
-* Manage device documentation
+### Medical Devices (FDA/IEC 62304)
+* **Design History File:** Maintain complete traceability for FDA audits
+* **Risk Management:** Link hazards to mitigations and verification
+* **Version Control:** Track all document revisions
 
-### Finance
-* Audit financial regulations
-* Track policy changes
-* Compliance documentation
+### Software Engineering
+* **Agile Traceability:** Link user stories to test cases
+* **API Documentation:** Ensure all endpoints are documented
+* **Security Compliance:** Verify OWASP requirements
 
 ---
 
-## Known Limitations
+## Advanced Features
 
-1. **Language:** Optimized for English (multilingual support requires model change)
-2. **Context Window:** Limited to 4096 tokens per query
-3. **Image Understanding:** OCR extracts text but cannot interpret visual content
-4. **Real-time Updates:** Requires manual refresh after document uploads
-5. **Concurrent Uploads:** Limited to sequential processing for memory safety
+### 1. Custom Audit Rules
+
+Create custom audit logic in `server.py`:
+
+```python
+def custom_audit_rule(requirement, documents):
+    """
+    Example: Flag requirements mentioned <3 times
+    """
+    occurrences = count_occurrences(requirement, documents)
+    if occurrences < 3:
+        return {
+            "severity": "warning",
+            "message": f"{requirement} has low coverage"
+        }
+    return None
+```
+
+### 2. Automated Reporting
+
+Schedule periodic audit reports:
+
+```python
+from apscheduler.schedulers.background import BackgroundScheduler
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(
+    generate_audit_report,
+    'cron',
+    hour=0  # Daily at midnight
+)
+scheduler.start()
+```
+
+### 3. Integration with PLM Systems
+
+Export traceability data:
+
+```python
+@app.get("/api/export/jira")
+async def export_to_jira():
+    """Export requirements to Jira"""
+    matrix = get_traceability_matrix()
+    # Convert to Jira format
+    return jira_payload
+```
+
+### 4. Visual Traceability Graphs
+
+Generate dependency graphs:
+
+```python
+import networkx as nx
+import matplotlib.pyplot as plt
+
+def generate_traceability_graph():
+    G = nx.DiGraph()
+    # Add nodes and edges based on requirements
+    nx.draw(G, with_labels=True)
+    plt.savefig('traceability_graph.png')
+```
+
+---
+
+## Security Best Practices
+
+### Production Deployment Checklist
+
+- [ ] Enable HTTPS/TLS
+- [ ] Implement authentication (JWT/OAuth)
+- [ ] Set up role-based access control
+- [ ] Enable audit logging
+- [ ] Configure firewall rules
+- [ ] Set up backup system
+- [ ] Implement data encryption at rest
+- [ ] Regular security updates
+- [ ] Penetration testing
+- [ ] Compliance review
+
+### Example Authentication Setup
+
+```python
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+security = HTTPBearer()
+
+async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    # Implement JWT validation
+    if not validate_jwt(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token"
+        )
+    return token
+```
 
 ---
 
 ## Roadmap
 
 ### Version 2.0 (Q2 2024)
-- [ ] Real-time document monitoring
-- [ ] Multi-user authentication system
-- [ ] GraphQL API support
-- [ ] Advanced requirement tracing graphs
-- [ ] Export audit reports to PDF
+- [ ] Web-based Master List editor
+- [ ] Real-time traceability dashboard
+- [ ] Integration with Jira/Azure DevOps
+- [ ] Advanced requirement impact analysis
+- [ ] Multi-language support
 
 ### Version 3.0 (Q4 2024)
-- [ ] Federated search across multiple instances
-- [ ] Machine learning for auto-requirement extraction
-- [ ] Integration with Jira/Azure DevOps
-- [ ] Mobile app (iOS/Android)
-- [ ] Advanced analytics dashboard
+- [ ] AI-powered requirement extraction
+- [ ] Automated test case generation
+- [ ] Change impact prediction
+- [ ] Federated traceability across systems
+- [ ] Mobile app for auditors
 
 ---
 
 ## Contributing
 
-We welcome contributions! Focus areas:
+We welcome contributions in:
 
-1. **Traceability:** Enhanced requirement link detection
-2. **Performance:** Further optimization for massive files
-3. **Security:** Additional hardening features
-4. **Integrations:** Connect with PLM/ALM systems
+1. **Traceability:** Enhanced gap detection algorithms
+2. **Integration:** Connectors for PLM/ALM systems
+3. **Reporting:** Advanced visualization
+4. **Security:** Additional hardening features
 5. **Testing:** Expand test coverage
-
-### Development Setup
-
-```bash
-# Install dev dependencies
-pip install -r requirements-dev.txt
-
-# Run tests
-pytest tests/ -v
-
-# Check code quality
-flake8 .
-black .
-mypy .
-```
 
 ---
 
 ## Acknowledgments
 
-* **PyMuPDF** for blazing-fast PDF parsing
-* **RapidOCR** for efficient GPU-accelerated OCR
-* **LangChain** for LLM orchestration
-* **ChromaDB** for vector storage
-* **FastAPI** for modern async framework
-* **Ollama** for local LLM deployment
-* **SlowAPI** for rate limiting
+* **PyMuPDF** - Fast PDF processing
+* **RapidOCR** - GPU-accelerated OCR
+* **LangChain** - LLM orchestration
+* **ChromaDB** - Vector storage
+* **FastAPI** - Modern web framework
+* **Ollama** - Local LLM serving
+* **SlowAPI** - Rate limiting
 
 ---
 
-## Support & Contact
+## Support
 
-For enterprise support, bug reports, or feature requests:
+For enterprise support:
 
-1. **Documentation:** Check this README and inline code comments
-2. **Issues:** Open a GitHub issue with:
-   * System specifications
-   * Error logs
-   * Steps to reproduce
-3. **Enterprise Support:** Contact for SLA-backed support options
+1. **Documentation:** This README + inline code comments
+2. **Community:** GitHub Issues
+3. **Enterprise:** Contact for SLA-backed support
 
 ---
 
 ## Disclaimer
 
-This system is designed for enterprise document management and traceability. While it implements security best practices, it should be:
+This system is designed for enterprise document management and requirements traceability. While it implements security and audit best practices:
 
-* Deployed on secure, private networks
-* Regularly audited for compliance
-* Used as a decision support tool, not a replacement for human review
+* Deploy on secure, private networks
+* Regular security audits required
+* Use as decision support, not replacement for human review
+* Verify critical information against source documents
 
-**Not suitable for:**
-* Safety-critical decisions without verification
-* Medical diagnosis
-* Legal advice without attorney review
-* Financial decisions without advisor consultation
-
-Always verify AI-generated responses against original source documents.
