@@ -2,7 +2,7 @@ import uvicorn
 import os
 
 if __name__ == "__main__":
-    print("🚀 Starting English-Optimized RAG Server...")
+    print("🚀 Starting High-Performance English RAG Server...")
     print("🌍 URL: http://localhost:8000")
     
     if not os.path.exists("./web"):

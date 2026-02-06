@@ -12,19 +12,17 @@ langchain-ollama
 langchain-huggingface
 sentence-transformers
 
-# --- Document Processing (High Performance) ---
+# --- Document Processing (The Fast Stack) ---
 pymupdf
 rapidocr-onnxruntime
 pandas
 openpyxl
-docling
+python-docx
+python-pptx
+pillow
 
 # --- Web Server ---
 fastapi
 uvicorn
 python-multipart
 pydantic
-
-onnxruntime-gpu
-torchvision 
-torchaudio

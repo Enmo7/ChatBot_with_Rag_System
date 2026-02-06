@@ -13,7 +13,9 @@ from rag_engine import RAGEngine
 WEB_FOLDER = "./web"
 UPLOAD_FOLDER = "./documents"
 DB_FOLDER = "./db"
-ALLOWED_EXTENSIONS = {'pdf', 'txt', 'csv', 'xlsx', 'png', 'jpg', 'jpeg', 'docx'}
+# Added pptx, docx
+ALLOWED_EXTENSIONS = {'pdf', 'txt', 'csv', 'xlsx', 'png', 'jpg', 'jpeg', 'docx', 'pptx'}
+MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB limit
 
 if not os.path.exists(UPLOAD_FOLDER): os.makedirs(UPLOAD_FOLDER)
 
@@ -30,7 +32,6 @@ app.add_middleware(
 rag_system = RAGEngine(DB_FOLDER)
 system_state = {"is_db_ready": False}
 
-# Attempt load on startup
 if os.path.exists(DB_FOLDER) and os.listdir(DB_FOLDER):
     try:
         print("🔄 Loading existing database...")
@@ -62,19 +63,18 @@ async def list_documents():
                 size = os.path.getsize(file_path)
                 ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'txt'
                 
-                # Count chunks safely
                 chunks_count = "?"
                 if system_state["is_db_ready"] and rag_system.vector_db:
                     try:
                         coll = rag_system.vector_db._collection
-                        ids = coll.get(where={"source": file_path})['ids']
-                        if not ids: # Try alternate slash
-                             ids = coll.get(where={"source": file_path.replace("\\", "/")})['ids']
+                        # Fix: Normalize path for lookup
+                        norm_path = os.path.normpath(file_path)
+                        ids = coll.get(where={"source": norm_path})['ids']
                         chunks_count = len(ids)
                     except: pass
 
                 docs.append({
-                    "id": filename, "name": filename, "type": 'pdf' if ext == 'pdf' else 'file',
+                    "id": filename, "name": filename, "type": ext,
                     "size": size, "chunks": chunks_count
                 })
     return {"documents": docs, "stats": {}}
@@ -84,9 +84,17 @@ async def upload_files(files: List[UploadFile] = File(...)):
     saved_count = 0
     for file in files:
         if allowed_file(file.filename):
-            file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+            # Fix: Path Normalization
+            file_path = os.path.normpath(os.path.join(UPLOAD_FOLDER, file.filename))
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
+            
+            # Simple Size Check
+            if os.path.getsize(file_path) > MAX_FILE_SIZE:
+                os.remove(file_path)
+                print(f"⚠️ File {file.filename} too large, removed.")
+                continue
+
             saved_count += 1
     if saved_count > 0: return {"success": True, "message": f"Uploaded {saved_count} files"}
     return JSONResponse(status_code=400, content={"success": False, "message": "No valid files"})
@@ -95,11 +103,8 @@ async def upload_files(files: List[UploadFile] = File(...)):
 async def refresh_database():
     try:
         loader = DocumentLoader(UPLOAD_FOLDER)
-        # Use Generator for massive files
         chunks_gen = loader.process_file_generator()
-        # Batch ingest
         rag_system.initialize_db(chunks_generator=chunks_gen, batch_size=200)
-        
         system_state["is_db_ready"] = True
         return {"success": True, "message": "Database rebuilt successfully"}
     except Exception as e:
@@ -113,6 +118,7 @@ async def query_rag(request: QueryRequest):
         return JSONResponse(status_code=400, content={"success": False, "message": "System not ready"})
     try:
         qa_chain = rag_system.get_qa_chain()
+        # Support both keys
         payload = {"input": request.query, "query": request.query}
         response = qa_chain.invoke(payload)
         
@@ -130,4 +136,4 @@ async def query_rag(request: QueryRequest):
         print(f"Query Error: {e}")
         return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
-app.mount("/", StaticFiles(directory=WEB_FOLDER, html=True), name="static") 
+app.mount("/", StaticFiles(directory=WEB_FOLDER, html=True), name="static")
