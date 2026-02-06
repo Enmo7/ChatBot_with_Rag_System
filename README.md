@@ -129,7 +129,7 @@ graph LR
 
 ```bash
 # Clone repository
-git clone <your-repo-url>
+git clone repo-url
 cd my_rag_project
 
 # Create virtual env
@@ -694,12 +694,6 @@ flake8 .
 black .
 mypy .
 ```
-
----
-
-## License
-
-MIT License - Free for commercial and personal use
 
 ---
 
