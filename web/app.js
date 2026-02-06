@@ -112,13 +112,6 @@ class RAGApp {
             console.error('Status check error:', error);
             this.updateSystemStatus('error', 'Connection Error');
             this.showToast('Unable to connect to backend server', 'error');
-            
-            // For demo purposes, simulate ready state
-            setTimeout(() => {
-                this.updateSystemStatus('ready', 'Demo Mode');
-                this.isSystemReady = true;
-                this.simulateDemoData();
-            }, 1000);
         }
     }
 
@@ -149,9 +142,6 @@ class RAGApp {
             this.updateStats(data.stats);
         } catch (error) {
             console.error('Load documents error:', error);
-            // Use demo data if backend unavailable
-            this.documents = this.getDemoDocuments();
-            this.updateDocumentsList();
             this.updateStats({ chunks: 0, embeddings: 0 });
         }
     }
@@ -193,7 +183,7 @@ class RAGApp {
                 <div class="document-name">${this.escapeHtml(doc.name)}</div>
                 <div class="document-meta">
                     <span>${size}</span>
-                    <span>${doc.chunks || 0} chunks</span>
+                    <span>${doc.type.toUpperCase()}</span>
                 </div>
             </div>
         `;
@@ -203,8 +193,12 @@ class RAGApp {
      * Update statistics
      */
     updateStats(stats) {
-        this.chunksCount.textContent = stats?.chunks || 0;
-        this.embeddingsCount.textContent = stats?.embeddings || 0;
+        // Handle explicit 0 values correctly
+        const chunks = (stats && stats.chunks !== undefined) ? stats.chunks : 0;
+        const embeddings = (stats && stats.embeddings !== undefined) ? stats.embeddings : 0;
+        
+        this.chunksCount.textContent = chunks.toLocaleString();
+        this.embeddingsCount.textContent = embeddings.toLocaleString();
     }
 
     /**
@@ -213,7 +207,7 @@ class RAGApp {
     async handleUpload() {
         const input = document.createElement('input');
         input.type = 'file';
-        input.accept = '.pdf,.txt';
+        input.accept = '.pdf,.txt,.docx,.pptx,.csv,.xlsx,.png,.jpg'; // Updated extensions
         input.multiple = true;
         
         input.onchange = async (e) => {
@@ -241,19 +235,7 @@ class RAGApp {
                 }
             } catch (error) {
                 console.error('Upload error:', error);
-                this.showToast('Upload failed. Using demo mode.', 'error');
-                
-                // Simulate upload in demo mode
-                files.forEach(file => {
-                    this.documents.push({
-                        id: Date.now() + Math.random(),
-                        name: file.name,
-                        type: file.name.endsWith('.pdf') ? 'pdf' : 'txt',
-                        size: file.size,
-                        chunks: Math.floor(Math.random() * 50) + 10
-                    });
-                });
-                this.updateDocumentsList();
+                this.showToast('Upload failed', 'error');
             } finally {
                 this.hideLoading();
             }
@@ -266,7 +248,7 @@ class RAGApp {
      * Refresh database
      */
     async refreshDatabase() {
-        this.showLoading('Refreshing database...');
+        this.showLoading('Rebuilding Knowledge Base (This may take a while)...');
         
         try {
             const response = await fetch(`${this.API_BASE}/refresh`, {
@@ -283,7 +265,7 @@ class RAGApp {
             }
         } catch (error) {
             console.error('Refresh error:', error);
-            this.showToast('Refresh completed (demo mode)', 'info');
+            this.showToast('Refresh failed', 'error');
         } finally {
             this.hideLoading();
         }
@@ -335,15 +317,12 @@ class RAGApp {
         } catch (error) {
             console.error('Query error:', error);
             this.removeTypingIndicator(typingId);
-            
-            // Demo response
-            const demoResponse = this.generateDemoResponse(message);
-            this.addMessage('assistant', demoResponse);
+            this.addMessage('assistant', 'Sorry, I encountered an error while processing your request.');
         }
     }
 
     /**
-     * Add message to chat
+     * Add message to chat (Fixed for Rich Sources)
      */
     addMessage(role, content, sources = []) {
         const timestamp = new Date().toLocaleTimeString('en-US', {
@@ -353,14 +332,42 @@ class RAGApp {
         
         const avatar = role === 'user' ? '👤' : '🤖';
         
+        // --- NEW: Rich Source Rendering ---
         let sourcesHtml = '';
         if (sources && sources.length > 0) {
             sourcesHtml = `
                 <div class="message-sources">
-                    <div class="sources-title">Sources</div>
-                    ${sources.map(source => `
-                        <div class="source-item">${this.escapeHtml(source)}</div>
-                    `).join('')}
+                    <div class="sources-title">📚 Sources & Traceability</div>
+                    ${sources.map(src => {
+                        // Extract properties safely
+                        const fileName = this.escapeHtml(src.source || 'Unknown');
+                        const pageNum = src.page !== 'N/A' ? `<span class="meta-tag">Page ${src.page}</span>` : '';
+                        
+                        // Traceability Data
+                        let traceInfo = '';
+                        if (src.traceability && src.traceability.upload_date) {
+                            const dateStr = src.traceability.upload_date.split(' ')[0];
+                            traceInfo = `<span class="meta-tag">📅 ${dateStr}</span>`;
+                        }
+
+                        // Links (REQ-xxx)
+                        let linksHtml = '';
+                        if (src.links && src.links.length > 0) {
+                            linksHtml = `<div class="source-links">🔗 ${src.links}</div>`;
+                        }
+                        
+                        return `
+                        <div class="source-item">
+                            <div class="source-header">
+                                <span class="file-name">📄 ${fileName}</span>
+                                <div class="source-meta">
+                                    ${pageNum}
+                                    ${traceInfo}
+                                </div>
+                            </div>
+                            ${linksHtml}
+                        </div>`;
+                    }).join('')}
                 </div>
             `;
         }
@@ -477,53 +484,6 @@ class RAGApp {
     }
 
     /**
-     * Generate demo response
-     */
-    generateDemoResponse(query) {
-        const responses = [
-            "Based on your documents, I can help you with that. However, I'm currently running in demo mode as the backend server is not available. Please ensure your Python backend is running on localhost:5000.",
-            "That's an interesting question! In production mode, I would search through your uploaded documents to provide a precise answer with sources. Currently running in demo mode.",
-            "I understand your query. To get accurate answers from your documents, please make sure the RAG backend server is running. You can start it by running 'python server.py' in your project directory."
-        ];
-        
-        return responses[Math.floor(Math.random() * responses.length)];
-    }
-
-    /**
-     * Simulate demo data
-     */
-    simulateDemoData() {
-        this.documents = this.getDemoDocuments();
-        this.updateDocumentsList();
-        this.updateStats({
-            chunks: 127,
-            embeddings: 127
-        });
-    }
-
-    /**
-     * Get demo documents
-     */
-    getDemoDocuments() {
-        return [
-            {
-                id: 1,
-                name: 'Project Documentation.pdf',
-                type: 'pdf',
-                size: 2458624,
-                chunks: 45
-            },
-            {
-                id: 2,
-                name: 'Research Paper.pdf',
-                type: 'pdf',
-                size: 5823441,
-                chunks: 82
-            }
-        ];
-    }
-
-    /**
      * Utility: Format file size
      */
     formatFileSize(bytes) {
@@ -538,6 +498,7 @@ class RAGApp {
      * Utility: Escape HTML
      */
     escapeHtml(text) {
+        if (typeof text !== 'string') return String(text); // Safety check
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;

@@ -698,6 +698,7 @@ body {
     border: 1px solid rgba(0, 245, 255, 0.1);
     border-radius: var(--border-radius-md);
     padding: var(--spacing-md);
+    max-width: 90%;
 }
 
 .message.user .message-content {
@@ -728,6 +729,7 @@ body {
     font-size: 13px;
 }
 
+/* --- NEW: Rich Source Styles --- */
 .message-sources {
     margin-top: var(--spacing-md);
     padding-top: var(--spacing-md);
@@ -743,23 +745,52 @@ body {
 }
 
 .source-item {
+    background: rgba(10, 14, 26, 0.3);
+    border-left: 3px solid var(--color-accent-cyan);
+    border-radius: 0 6px 6px 0;
+    padding: 8px 12px;
+    margin-bottom: 8px;
     font-size: 13px;
-    color: var(--color-accent-cyan);
-    margin-bottom: var(--spacing-xs);
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
 }
 
-.source-item::before {
-    content: '📄';
-    font-size: 14px;
+.source-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.file-name {
+    font-weight: 500;
+    color: var(--color-text-primary);
+}
+
+.source-meta {
+    display: flex;
+    gap: 6px;
+}
+
+.meta-tag {
+    font-size: 11px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--color-text-secondary);
+}
+
+.source-links {
+    font-size: 12px;
+    color: var(--color-accent-green);
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .message-timestamp {
     font-size: 11px;
     color: var(--color-text-tertiary);
     margin-top: var(--spacing-sm);
+    text-align: right;
 }
 
 /* ========================================

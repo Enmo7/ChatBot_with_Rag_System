@@ -12,17 +12,21 @@ langchain-ollama
 langchain-huggingface
 sentence-transformers
 
-# --- Document Processing (The Fast Stack) ---
+# --- Document Processing ---
 pymupdf
 rapidocr-onnxruntime
-pandas
-openpyxl
 python-docx
 python-pptx
 pillow
+pandas
+openpyxl
 
-# --- Web Server ---
+# --- Web Server, Security & Monitoring ---
 fastapi
 uvicorn
 python-multipart
 pydantic
+aiofiles       # Async File I/O
+psutil         # Memory Monitoring
+slowapi        # Rate Limiting
+limits         # Dependency for slowapi
