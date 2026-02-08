@@ -54,6 +54,61 @@ def validate_file(filename: str, size: int):
     if size > MAX_FILE_SIZE:
         raise HTTPException(400, "File too large.")
 
+# ✅ NEW ENDPOINT: System Status
+@app.get("/api/status")
+async def get_status():
+    """Returns system status for frontend monitoring"""
+    return {
+        "status": "ready" if system_state["is_db_ready"] else "initializing",
+        "message": "System Ready" if system_state["is_db_ready"] else "Database initializing...",
+        "db_ready": system_state["is_db_ready"]
+    }
+
+# ✅ NEW ENDPOINT: Documents List
+@app.get("/api/documents")
+async def get_documents():
+    """Returns list of uploaded documents with statistics"""
+    try:
+        documents = []
+        stats = {"chunks": 0, "embeddings": 0}
+        
+        # Get documents from folder
+        if os.path.exists(UPLOAD_FOLDER):
+            for filename in os.listdir(UPLOAD_FOLDER):
+                file_path = os.path.join(UPLOAD_FOLDER, filename)
+                if os.path.isfile(file_path):
+                    file_size = os.path.getsize(file_path)
+                    file_ext = filename.split('.')[-1].lower() if '.' in filename else 'unknown'
+                    
+                    documents.append({
+                        "id": filename,
+                        "name": filename,
+                        "type": file_ext,
+                        "size": file_size
+                    })
+        
+        # Get vector DB statistics if available
+        if system_state["is_db_ready"] and rag_system.vector_db:
+            try:
+                # Get collection stats from ChromaDB
+                collection = rag_system.vector_db._collection
+                count = collection.count()
+                stats["chunks"] = count
+                stats["embeddings"] = count
+            except:
+                pass
+        
+        return {
+            "success": True,
+            "documents": documents,
+            "stats": stats
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=500, 
+            content={"success": False, "message": str(e), "documents": [], "stats": {"chunks": 0, "embeddings": 0}}
+        )
+
 @app.post("/api/traceability/master-upload")
 @limiter.limit("5/minute") # ✅ Rate Limit Added
 async def upload_master_list(request: Request, file: UploadFile = File(...)):
