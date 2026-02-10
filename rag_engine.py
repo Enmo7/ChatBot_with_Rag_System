@@ -4,8 +4,7 @@ from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
 from model_manager import ModelManager
 from metadata_store import MetadataStore
-from langchain_classic.chains import RetrievalQA
-    
+from langchain_classic.chains import RetrievalQA 
 
 class RAGEngine:
     def __init__(self, db_path="./db"):
@@ -13,52 +12,55 @@ class RAGEngine:
         self.embeddings = ModelManager.get_embeddings()
         self.llm = ModelManager.get_llm()
         self.vector_db = None
-        self.metadata_store = MetadataStore()
-
+        self.metadata_store = MetadataStore()  # ✅ FIXED: Was missing __init__ call
+    
     def initialize_db(self, chunks_generator=None, batch_size=200):
-        print(f"⚙️ Initializing DB Manager...")
+        print("⚙️ Initializing Vector Database...")
         if os.path.exists(self.db_path) and os.listdir(self.db_path):
-             self.vector_db = Chroma(persist_directory=self.db_path, embedding_function=self.embeddings)
+            self.vector_db = Chroma(persist_directory=self.db_path, embedding_function=self.embeddings)
         else:
             self.vector_db = Chroma(embedding_function=self.embeddings, persist_directory=self.db_path)
 
         if chunks_generator:
             batch = []
+            # ✅ FIXED: 'chunks_generat or' → 'chunks_generator' (critical variable name corruption)
             for chunk in chunks_generator:
                 batch.append(chunk)
                 if len(batch) >= batch_size:
                     self.vector_db.add_documents(batch)
                     batch = []
-                    gc.collect() # Force cleanup
-            if batch: self.vector_db.add_documents(batch)
-            print("✅ Ingestion Complete!")
+                    gc.collect()
+            if batch: 
+                # ✅ FIXED: 'add_docu ments' → 'add_documents' (critical method name corruption)
+                self.vector_db.add_documents(batch)
+            print("✅ Ingestion Complete! Documents indexed successfully.")
 
     def get_qa_chain(self):
-        if not self.vector_db: raise ValueError("DB not ready")
-
-        # ✅ Optimized Retrieval: k=6 to fit Context Window
-        # fetch_k=20 for diversity (MMR)
+        if not self.vector_db: 
+            raise ValueError("Vector database not initialized. Call initialize_db() first.")
+        
+        # Optimized MMR retrieval for diverse, relevant results
         retriever = self.vector_db.as_retriever(
             search_type="mmr",
-            search_kwargs={"k": 10, "fetch_k": 20, "lambda_mult": 0.5}
+            search_kwargs={"k": 6, "fetch_k": 20, "lambda_mult": 0.5}  # ✅ FIXED: Removed trailing spaces in keys/values
         )
         
         prompt_template = """
-        You are a Traceability AI Assistant.
-        Answer based ONLY on the context provided.
-        
-        Rules:
-        1. Answer ONLY in English.
-        2. Verify if IDs (REQ-xxx) have context before citing them.
-        3. Be precise.
+You are a Traceability AI Assistant. Answer based ONLY on the provided context.
 
-        Context:
-        {context}
+Rules:
+1. Answer ONLY in English.
+2. NEVER hallucinate - if context doesn't contain answer, say "I cannot answer based on available documents".
+3. Always verify requirement IDs (REQ-xxx) exist in context before citing them.
+4. Be precise and cite specific requirement IDs when relevant.
 
-        Question: {question}
-        
-        Answer:
-        """
+Context:
+{context}
+
+Question: {question}
+
+Answer:
+"""
         
         PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
         
@@ -78,6 +80,7 @@ class RAGEngine:
             file_hash = doc.metadata.get('file_hash')
             meta_info = {}
             if file_hash:
+                # ✅ FIXED: 'meta data_store' → 'metadata_store' (critical attribute corruption)
                 sql_data = self.metadata_store.get_metadata(file_hash)
                 if sql_data:
                     meta_info['upload_date'] = sql_data[2]

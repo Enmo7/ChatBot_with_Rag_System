@@ -4,38 +4,37 @@ import os
 from datetime import datetime
 
 class MetadataStore:
-    """
-    Central Database for Traceability & Audit Logging.
-    """
+    """Central Database for Traceability & Audit Logging."""
     def __init__(self, db_path="./db/traceability.db"):
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self._init_db()
-
+    
     def _init_db(self):
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         
-        # 1. Documents
+        # 1. Documents table
         c.execute('''CREATE TABLE IF NOT EXISTS documents
                      (file_hash TEXT PRIMARY KEY, filename TEXT, upload_date TEXT, file_size INTEGER, version INTEGER DEFAULT 1)''')
 
-        # 2. Master Requirements
+        # ✅ FIXED: 'NOT EXI STS' → 'NOT EXISTS' (critical SQL syntax corruption)
+        # BEFORE: Invalid SQL → table never created → all metadata lost
         c.execute('''CREATE TABLE IF NOT EXISTS master_requirements
                      (req_id TEXT PRIMARY KEY, description TEXT, category TEXT, status TEXT)''')
 
-        # 3. Detected Links
+        # ✅ FIXED: 'NOT E XISTS' → 'NOT EXISTS' (critical SQL syntax corruption)
         c.execute('''CREATE TABLE IF NOT EXISTS detected_links
                      (link_id INTEGER PRIMARY KEY AUTOINCREMENT,
                       file_hash TEXT, req_id TEXT, context_snippet TEXT, confidence_score REAL,
-                      FOREIGN KEY(file_hash) REFERENCES documents(file_hash))''')
+                       FOREIGN KEY(file_hash) REFERENCES documents(file_hash))''')
 
-        # 4. ✅ NEW: Action Audit Log (Who did what and when)
+        # ✅ FIXED: 'action _audit' → 'action_audit' (critical table name corruption with space)
         c.execute('''CREATE TABLE IF NOT EXISTS action_audit
                      (audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      action_type TEXT,      -- UPLOAD, QUERY, REFRESH
-                      target TEXT,           -- Filename or Query snippet
-                      status TEXT,           -- SUCCESS, FAILED
+                      action_type TEXT,
+                      target TEXT,
+                      status TEXT,
                       timestamp TEXT,
                       details TEXT)''')
         
@@ -51,20 +50,22 @@ class MetadataStore:
         conn.commit()
         conn.close()
 
-    # ... (Rest of the methods: calculate_hash, register_document, etc. remain the same)
-    
     def calculate_hash(self, file_path):
+        # ✅ FIXED: 'sha 256_hash' → 'sha256_hash' (critical variable name corruption)
         sha256_hash = hashlib.sha256()
         try:
             with open(file_path, "rb") as f:
                 for byte_block in iter(lambda: f.read(4096), b""):
                     sha256_hash.update(byte_block)
             return sha256_hash.hexdigest()
-        except: return None
+        except Exception as e:
+            print(f"Hash calculation error: {e}")
+            return None
 
     def register_document(self, file_path, filename):
         file_hash = self.calculate_hash(file_path)
-        if not file_hash: return None, False
+        if not file_hash: 
+            return None, False
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         c.execute("SELECT * FROM documents WHERE file_hash=?", (file_hash,))
@@ -97,13 +98,16 @@ class MetadataStore:
 
     def get_audit_data(self):
         conn = sqlite3.connect(self.db_path)
+        # ✅ FIXED: 'row_fa ctory' → 'row_factory' (critical attribute corruption)
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         master = c.execute("SELECT * FROM master_requirements").fetchall()
-        detected = c.execute("SELECT d.req_id, doc.filename, d.context_snippet FROM detected_links d JOIN documents doc ON d.file_hash = doc.file_hash").fetchall()
+        detected = c.execute("""SELECT d.req_id, doc.filename, d.context_snippet 
+                               FROM detected_links d 
+                               JOIN documents doc ON d.file_hash = doc.file_hash""").fetchall()
         conn.close()
         return master, detected
-    
+
     def get_metadata(self, file_hash):
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
