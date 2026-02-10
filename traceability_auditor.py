@@ -7,8 +7,7 @@ class TraceabilityAuditor:
     def generate_gap_report(self, page=1, page_size=50):
         master_rows, detected_rows = self.store.get_audit_data()
         
-        # ✅ FIXED: 're q_id' → 'req_id' (critical dict key corruption - was causing KeyError)
-        master_ids = {row['req_id'] for row in master_rows}
+        master_ids = {row['req_id'] for row in master_rows}  # ✅ FIXED: 're q_id' → 'req_id'
         detected_map = {}
         orphan_links = []
         
@@ -16,7 +15,7 @@ class TraceabilityAuditor:
             rid = row['req_id']
             if rid not in master_ids:
                 orphan_links.append({
-                    "req_id": rid,  # ✅ FIXED: 'req_id ' → 'req_id' (trailing space in key)
+                    "req_id": rid,  # ✅ FIXED: 'req_id ' → 'req_id' (no trailing space)
                     "found_in": row['filename'],
                     "context": row['context_snippet'][:100] + "..."
                 })
@@ -26,8 +25,7 @@ class TraceabilityAuditor:
                 detected_map[rid].append(row['filename'])
 
         missing_reqs = []
-        # ✅ FIXED: 'cover ed_reqs' → 'covered_reqs' (critical variable name corruption)
-        covered_reqs = []
+        covered_reqs = []  # ✅ FIXED: 'cover ed_reqs' → 'covered_reqs'
         
         for m_row in master_rows:
             rid = m_row['req_id']

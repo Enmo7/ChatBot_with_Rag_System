@@ -14,23 +14,18 @@ class MetadataStore:
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         
-        # 1. Documents table
         c.execute('''CREATE TABLE IF NOT EXISTS documents
                      (file_hash TEXT PRIMARY KEY, filename TEXT, upload_date TEXT, file_size INTEGER, version INTEGER DEFAULT 1)''')
 
-        # ✅ FIXED: 'NOT EXI STS' → 'NOT EXISTS' (critical SQL syntax corruption)
-        # BEFORE: Invalid SQL → table never created → all metadata lost
-        c.execute('''CREATE TABLE IF NOT EXISTS master_requirements
+        c.execute('''CREATE TABLE IF NOT EXISTS master_requirements  -- ✅ FIXED: 'NOT EXI STS' → 'NOT EXISTS'
                      (req_id TEXT PRIMARY KEY, description TEXT, category TEXT, status TEXT)''')
 
-        # ✅ FIXED: 'NOT E XISTS' → 'NOT EXISTS' (critical SQL syntax corruption)
-        c.execute('''CREATE TABLE IF NOT EXISTS detected_links
+        c.execute('''CREATE TABLE IF NOT EXISTS detected_links  -- ✅ FIXED: 'NOT E XISTS' → 'NOT EXISTS'
                      (link_id INTEGER PRIMARY KEY AUTOINCREMENT,
                       file_hash TEXT, req_id TEXT, context_snippet TEXT, confidence_score REAL,
                        FOREIGN KEY(file_hash) REFERENCES documents(file_hash))''')
 
-        # ✅ FIXED: 'action _audit' → 'action_audit' (critical table name corruption with space)
-        c.execute('''CREATE TABLE IF NOT EXISTS action_audit
+        c.execute('''CREATE TABLE IF NOT EXISTS action_audit  -- ✅ FIXED: 'action _audit' → 'action_audit'
                      (audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
                       action_type TEXT,
                       target TEXT,
@@ -42,7 +37,6 @@ class MetadataStore:
         conn.close()
 
     def log_action(self, action_type, target, status="SUCCESS", details=""):
-        """Logs user actions for security auditing."""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
         c.execute("INSERT INTO action_audit (action_type, target, status, timestamp, details) VALUES (?, ?, ?, ?, ?)",
@@ -51,8 +45,7 @@ class MetadataStore:
         conn.close()
 
     def calculate_hash(self, file_path):
-        # ✅ FIXED: 'sha 256_hash' → 'sha256_hash' (critical variable name corruption)
-        sha256_hash = hashlib.sha256()
+        sha256_hash = hashlib.sha256()  # ✅ FIXED: 'sha 256_hash' → 'sha256_hash'
         try:
             with open(file_path, "rb") as f:
                 for byte_block in iter(lambda: f.read(4096), b""):
@@ -98,8 +91,7 @@ class MetadataStore:
 
     def get_audit_data(self):
         conn = sqlite3.connect(self.db_path)
-        # ✅ FIXED: 'row_fa ctory' → 'row_factory' (critical attribute corruption)
-        conn.row_factory = sqlite3.Row
+        conn.row_factory = sqlite3.Row  # ✅ FIXED: 'row_fa ctory' → 'row_factory'
         c = conn.cursor()
         master = c.execute("SELECT * FROM master_requirements").fetchall()
         detected = c.execute("""SELECT d.req_id, doc.filename, d.context_snippet 

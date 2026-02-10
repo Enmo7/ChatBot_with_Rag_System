@@ -22,9 +22,8 @@ UPLOAD_FOLDER = "./documents"
 DB_FOLDER = "./db"
 QUERY_TIMEOUT = 60
 
-# Security Constants
 ALLOWED_EXTENSIONS = {'pdf', 'txt', 'csv', 'xlsx', 'png', 'jpg', 'jpeg', 'docx', 'pptx'}
-MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
+MAX_FILE_SIZE = 500 * 1024 * 1024
 
 limiter = Limiter(key_func=get_remote_address)
 if not os.path.exists(UPLOAD_FOLDER): 
@@ -45,7 +44,6 @@ rag_system = RAGEngine(DB_FOLDER)
 auditor = TraceabilityAuditor()
 system_state = {"is_db_ready": False}
 
-# Initialize DB if exists
 if os.path.exists(DB_FOLDER) and os.listdir(DB_FOLDER):
     try: 
         rag_system.initialize_db()
@@ -66,7 +64,6 @@ def validate_file(filename: str, size: int):
 
 @app.get("/api/status")
 async def get_status():
-    """Returns system status for frontend monitoring"""
     return {
         "status": "ready" if system_state["is_db_ready"] else "initializing",
         "message": "System Ready" if system_state["is_db_ready"] else "Database initializing...",
@@ -75,19 +72,16 @@ async def get_status():
 
 @app.get("/api/documents")
 async def get_documents():
-    """Returns list of uploaded documents with statistics"""
     try:
         documents = []
         stats = {"chunks": 0, "embeddings": 0}
         
         if os.path.exists(UPLOAD_FOLDER):
             for filename in os.listdir(UPLOAD_FOLDER):
-                # ✅ FIXED: 'filenam e' → 'filename' (critical variable name corruption)
-                file_path = os.path.join(UPLOAD_FOLDER, filename)
+                file_path = os.path.join(UPLOAD_FOLDER, filename)  # ✅ FIXED: 'filenam e' → 'filename'
                 if os.path.isfile(file_path):
                     file_size = os.path.getsize(file_path)
-                    # ✅ FIXED: 'el se' → 'else' (critical keyword corruption)
-                    file_ext = filename.split('.')[-1].lower() if '.' in filename else 'unknown'
+                    file_ext = filename.split('.')[-1].lower() if '.' in filename else 'unknown'  # ✅ FIXED: 'el se' → 'else'
                     
                     documents.append({
                         "id": filename,
@@ -127,10 +121,9 @@ async def upload_master_list(request: Request, file: UploadFile = File(...)):
         
         decoded = content.decode('utf-8')
         csv_reader = csv.reader(io.StringIO(decoded))
-        next(csv_reader, None)  # Skip header
+        next(csv_reader, None)
         
-        # ✅ FIXED: 'le n(row)' → 'len(row)' (critical function name corruption)
-        reqs = [
+        reqs = [  # ✅ FIXED: 'le n(row)' → 'len(row)'
             (row[0].strip(), row[1].strip(), row[2].strip() if len(row) > 2 else "General", "Active")
             for row in csv_reader if len(row) >= 2
         ]
@@ -202,7 +195,7 @@ async def query_rag(request: Request, body: QueryRequest):
     if not system_state["is_db_ready"]:
         return JSONResponse(status_code=400, content={"success": False, "msg": "Database not ready. Upload documents and refresh first."})
     
-    clean_query = html.escape(body.query[:500])  # Sanitize and limit length
+    clean_query = html.escape(body.query[:500])
     
     try:
         async def run():
@@ -210,8 +203,7 @@ async def query_rag(request: Request, body: QueryRequest):
             return await asyncio.to_thread(qa.invoke, {"query": clean_query})
         
         resp = await asyncio.wait_for(run(), timeout=QUERY_TIMEOUT)
-        # ✅ FIXED: 'resp.g et' → 'resp.get' (critical method name corruption)
-        ans = resp.get('answer') or resp.get('result', '')
+        ans = resp.get('answer') or resp.get('result', '')  # ✅ FIXED: 'resp.g et' → 'resp.get'
         srcs = rag_system.enrich_sources(resp.get('source_documents', []))
         
         rag_system.metadata_store.log_action("QUERY", clean_query[:50], "SUCCESS")
@@ -225,7 +217,6 @@ async def query_rag(request: Request, body: QueryRequest):
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"success": False, "msg": f"Query failed: {str(e)}"})
 
-# Serve static files last to avoid route conflicts
 if os.path.exists(WEB_FOLDER):
     app.mount("/", StaticFiles(directory=WEB_FOLDER, html=True), name="static")
 else:

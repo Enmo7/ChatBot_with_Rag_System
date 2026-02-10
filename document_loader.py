@@ -22,32 +22,44 @@ class DocumentLoader:
         self.directory_path = os.path.normpath(directory_path)
         self.metadata_store = MetadataStore()
         
-        import torch
-        use_gpu = torch.cuda.is_available() and torch.cuda.device_count() > 0
+        # ✅ CRITICAL FIX: Force CPU mode to avoid GPU permission issues
+        use_gpu = False  # Set to False to use CPU (avoids WinError 5 permission issues)
         
-        # ✅ FIXED: Correct RapidOCR parameter names (det_use_cuda NOT det_use_gpu)
-        # ✅ FIXED: Added proper error handling to diagnose failures
+        # ✅ CRITICAL FIX: Handle model download issues causing 'KeyError: model_path'
         try:
+            # Initialize with explicit CPU parameters AND force model download
             self.ocr_engine = RapidOCR(
                 det_use_cuda=use_gpu,
                 cls_use_cuda=use_gpu,
-                rec_use_cuda=use_gpu
+                rec_use_cuda=use_gpu,
+                # Force model download on initialization
+                det_model_path=None,
+                cls_model_path=None,
+                rec_model_path=None
             )
             device_msg = "GPU (CUDA)" if use_gpu else "CPU"
             print(f"✅ OCR engine initialized on {device_msg} using RapidOCR")
         except Exception as e:
             self.ocr_engine = None
-            print(f"⚠️ OCR engine initialization failed - falling back to text-only extraction. Error: {type(e).__name__}: {e}")
-            print("💡 Fix suggestions:")
-            print("   1. Install GPU support: pip install onnxruntime-gpu")
-            print("   2. Or force CPU mode by setting use_gpu=False")
-            print("   3. Verify installation: python -c 'from rapidocr_onnxruntime import RapidOCR; print(RapidOCR())'")
+            error_msg = str(e)
+            # ✅ Handle 'model_path' KeyError specifically
+            if "model_path" in error_msg or "KeyError" in error_msg:
+                print("⚠️ OCR initialization failed: Missing model files")
+                print("💡 FIX: Models will auto-download on first use. Restart the application.")
+                print("   If issue persists:")
+                print("   1. pip uninstall rapidocr-onnxruntime -y")
+                print("   2. pip install rapidocr-onnxruntime --no-cache-dir")
+                print("   3. Restart your Python environment")
+            else:
+                print(f"⚠️ OCR engine initialization failed - falling back to text-only extraction. Error: {type(e).__name__}: {e}")
+                print("💡 Troubleshooting:")
+                print("   1. Install CPU runtime: pip install onnxruntime")
+                print("   2. Force CPU mode: Already enabled in code (use_gpu=False)")
+                print("   3. Restart application after package installation")
         
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=300)
         
         # ✅ CRITICAL FIX: Removed space before REQ pattern - was causing regex to fail
-        # BEFORE: r'\b( REQ|TC|...)' → would match " REQ-001" (with space) but NOT "REQ-001"
-        # AFTER:  r'\b(REQ|TC|...)' → correctly matches requirement IDs
         self.link_pattern = re.compile(r'\b(REQ|TC|SRS|TEST|BUG|SPEC|DOC|FTR)-?[A-Z0-9]+\b', re.IGNORECASE)
 
     def check_memory(self):
@@ -73,12 +85,11 @@ class DocumentLoader:
             if idx == -1: 
                 continue
             start, end = max(0, idx - 50), min(len(text), idx + len(link) + 50)
-            # ✅ FIXED: 'contex t' → 'context' (critical variable name corruption)
-            context = text[start:end]
+            context = text[start:end]  # ✅ FIXED: 'contex t' → 'context'
             results.append({
                 "id": link, 
                 "context": context, 
-                "valid_context": len(context.split()) > 5  # Require meaningful context
+                "valid_context": len(context.split()) > 5
             })
         return results
 
@@ -106,8 +117,7 @@ class DocumentLoader:
                 os.unlink(temp_file.name)
 
     def _process_text_content(self, text, file_hash, file_path, **metadata):
-        # ✅ FIXED: 'n ot' → 'not' (critical logical operator corruption)
-        if not text.strip(): 
+        if not text.strip():  # ✅ FIXED: 'n ot' → 'not'
             return
         
         links_info = self.extract_links_with_full_info(text)
@@ -117,12 +127,10 @@ class DocumentLoader:
             if link['valid_context']: 
                 valid_links.append(link['id'])
 
-        # ✅ FIXED: 'm etadata' → 'metadata' (critical dict key corruption)
-        doc = Document(page_content=text, metadata={"source": file_path, "links": ", ".join(valid_links), **metadata})
+        doc = Document(page_content=text, metadata={"source": file_path, "links": ", ".join(valid_links), **metadata})  # ✅ FIXED: 'm etadata' → 'metadata'
         chunks = self.text_splitter.split_documents([doc])
         for chunk in chunks:
-            # ✅ FIXED: 'page_ content' → 'page_content' (critical attribute corruption)
-            chunk.metadata['chunk_hash'] = self.hash_chunk(chunk.page_content)
+            chunk.metadata['chunk_hash'] = self.hash_chunk(chunk.page_content)  # ✅ FIXED: 'page_ content' → 'page_content'
             yield chunk
 
     def process_file_generator(self) -> Iterator[Document]:
@@ -134,8 +142,7 @@ class DocumentLoader:
                 if not self.check_memory(): 
                     continue
 
-                # ✅ FIXED: 'register_d ocument' → 'register_document' (critical method name corruption)
-                file_hash, is_new = self.metadata_store.register_document(file_path, os.path.basename(file_path))
+                file_hash, is_new = self.metadata_store.register_document(file_path, os.path.basename(file_path))  # ✅ FIXED: 'register_d ocument' → 'register_document'
                 if not file_hash: 
                     continue
                 
@@ -172,8 +179,7 @@ class DocumentLoader:
                 elif ext == 'txt':
                     loader = TextLoader(file_path, encoding='utf-8')
                     for d in loader.load():
-                        # ✅ FIXED: 'yiel d' → 'yield' (critical keyword corruption)
-                        yield from self._process_text_content(d.page_content, file_hash, file_path, type="text")
+                        yield from self._process_text_content(d.page_content, file_hash, file_path, type="text")  # ✅ FIXED: 'yiel d' → 'yield'
 
             except Exception as e:
                 print(f"Error processing {file_path}: {e}")

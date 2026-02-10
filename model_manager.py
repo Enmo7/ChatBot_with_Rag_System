@@ -14,6 +14,11 @@ class ModelManager:
         )
     
     @staticmethod
-    def get_llm(model_name="llama3.2"):
-        print(f"🧠 Initializing LLM ({model_name})...")
-        return ChatOllama(model=model_name, temperature=0.1, num_ctx=4096)
+    def get_llm(model_name="mistral:instruct"):  # ✅ Switched to Mistral Instruct (best for RAG)
+        print(f"🧠 Initializing Mistral LLM ({model_name})...")
+        return ChatOllama(
+            model=model_name,
+            temperature=0.1,      # Low temp for factual accuracy
+            num_ctx=8192,         # Mistral supports 8K context
+            num_predict=512       # Reasonable response length
+        )

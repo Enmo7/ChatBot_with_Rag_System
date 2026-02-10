@@ -4,7 +4,7 @@ from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
 from model_manager import ModelManager
 from metadata_store import MetadataStore
-from langchain_classic.chains import RetrievalQA 
+from langchain_classic.chains import RetrievalQA
 
 class RAGEngine:
     def __init__(self, db_path="./db"):
@@ -12,7 +12,7 @@ class RAGEngine:
         self.embeddings = ModelManager.get_embeddings()
         self.llm = ModelManager.get_llm()
         self.vector_db = None
-        self.metadata_store = MetadataStore()  # ✅ FIXED: Was missing __init__ call
+        self.metadata_store = MetadataStore()
     
     def initialize_db(self, chunks_generator=None, batch_size=200):
         print("⚙️ Initializing Vector Database...")
@@ -23,7 +23,6 @@ class RAGEngine:
 
         if chunks_generator:
             batch = []
-            # ✅ FIXED: 'chunks_generat or' → 'chunks_generator' (critical variable name corruption)
             for chunk in chunks_generator:
                 batch.append(chunk)
                 if len(batch) >= batch_size:
@@ -31,7 +30,6 @@ class RAGEngine:
                     batch = []
                     gc.collect()
             if batch: 
-                # ✅ FIXED: 'add_docu ments' → 'add_documents' (critical method name corruption)
                 self.vector_db.add_documents(batch)
             print("✅ Ingestion Complete! Documents indexed successfully.")
 
@@ -39,28 +37,27 @@ class RAGEngine:
         if not self.vector_db: 
             raise ValueError("Vector database not initialized. Call initialize_db() first.")
         
-        # Optimized MMR retrieval for diverse, relevant results
         retriever = self.vector_db.as_retriever(
             search_type="mmr",
-            search_kwargs={"k": 6, "fetch_k": 20, "lambda_mult": 0.5}  # ✅ FIXED: Removed trailing spaces in keys/values
+            search_kwargs={"k": 6, "fetch_k": 20, "lambda_mult": 0.5}
         )
         
-        prompt_template = """
-You are a Traceability AI Assistant. Answer based ONLY on the provided context.
+        # ✅ MISTRAL-OPTIMIZED PROMPT (follows Mistral's instruction format)
+        prompt_template = """<s>[INST] You are a Traceability AI Assistant. Answer based ONLY on the provided context.
 
 Rules:
 1. Answer ONLY in English.
 2. NEVER hallucinate - if context doesn't contain answer, say "I cannot answer based on available documents".
 3. Always verify requirement IDs (REQ-xxx) exist in context before citing them.
 4. Be precise and cite specific requirement IDs when relevant.
+5. If asked about traceability coverage, reference the detected_links table data.
 
 Context:
 {context}
 
-Question: {question}
+Question: {question} [/INST]
 
-Answer:
-"""
+Answer:"""
         
         PROMPT = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
         
@@ -74,13 +71,11 @@ Answer:
         return qa_chain
 
     def enrich_sources(self, source_documents):
-        """Enriches source docs with metadata from SQLite."""
         enriched = []
         for doc in source_documents:
             file_hash = doc.metadata.get('file_hash')
             meta_info = {}
             if file_hash:
-                # ✅ FIXED: 'meta data_store' → 'metadata_store' (critical attribute corruption)
                 sql_data = self.metadata_store.get_metadata(file_hash)
                 if sql_data:
                     meta_info['upload_date'] = sql_data[2]
@@ -89,7 +84,7 @@ Answer:
             enriched.append({
                 "source": os.path.basename(doc.metadata.get('source', 'Unknown')),
                 "page": doc.metadata.get('page', 'N/A'),
-                "links": doc.metadata.get('found_links', ''),
+                "links": doc.metadata.get('links', ''),
                 "traceability": meta_info
             })
         return enriched
